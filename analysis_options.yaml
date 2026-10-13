@@ -1,0 +1,18 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # 设计稿示例文案不参与代码检查
+    avoid_unnecessary_containers: ignore
+  exclude:
+    - "**/*.g.dart"
+    - "build/**"
+    - android/**
+    - web/**
+    - windows/**
+    - linux/**
+
+linter:
+  rules:
+    prefer_single_quotes: true
+    always_declare_return_types: true

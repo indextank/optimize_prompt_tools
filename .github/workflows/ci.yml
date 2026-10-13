@@ -1,0 +1,231 @@
+# ============================================================================
+# CI · 每周代码检测 + 按变更决定是否自动构建打包
+#
+# 触发方式：
+#   1) schedule：每周一 10:00（Asia/Shanghai）自动周检
+#   2) workflow_dispatch：手动触发（审核/应急，不受变更检测限制）
+#
+# 数据流：
+#   ① code-detect   —— 检测近 7 天核心路径（lib/test/assets/tool/四端工程/pubspec*）
+#                      是否有代码变更；无变更则整条流水线跳过
+#   ② quality       —— flutter analyze + 全量测试（质量门禁，失败则不构建）
+#   ③ build-*       —— 三平台并行出包（Linux tar.gz / Windows zip / Android
+#                      split APK + AAB），产物命名带版本号 + SHA256，上传 Artifacts
+#
+# 说明：
+#   - 本工作流仅使用标准 Flutter 命令，不依赖仓库外的本地脚本
+#   - Android 未配置签名 Secrets 时自动回退 debug 签名（仅内部使用）；
+#     配置 Secrets 后（见 android 签名步骤注释）自动切换正式签名
+# ============================================================================
+name: CI · 周检与自动打包
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'   # 每周一 02:00 UTC = 10:00 Asia/Shanghai
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.run_number }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: '3.47.6'
+
+jobs:
+  # ---------------------------------------------------------------- ① 变更检测
+  code-detect:
+    name: ① 周检 · 代码变更检测
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.detect.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        name: 检测近 7 天核心代码变更
+        run: |
+          set -e
+          CORE_PATHS="lib/ test/ assets/ tool/ android/ linux/ windows/ web/ pubspec.yaml pubspec.lock"
+          CHANGED_FILES=$(git log --since="7 days ago" --name-only --pretty=format: -- $CORE_PATHS | sort -u | grep -c . || true)
+          if [ "$CHANGED_FILES" -gt 0 ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "📦 检测到近 7 天 ${CHANGED_FILES} 个核心文件变更，进入构建流程："
+            git log --since="7 days ago" --oneline -- $CORE_PATHS | head -20
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "✅ 近 7 天核心代码无变更，本周跳过构建"
+          fi
+
+  # ---------------------------------------------------------------- ② 质量门禁
+  quality:
+    name: ② 质量门禁 · analyze + 全量测试
+    needs: code-detect
+    if: github.event_name == 'workflow_dispatch' || needs.code-detect.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 CJK 字体（golden 测试依赖 NotoSansCJK）
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends fonts-noto-cjk
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: 静态分析（零告警门槛）
+        run: flutter analyze
+
+      - name: 全量测试
+        run: flutter test
+
+  # ---------------------------------------------------------------- ③ 三平台构建打包
+  build-linux:
+    name: ③a 构建打包 · Linux (tar.gz)
+    needs: [code-detect, quality]
+    if: github.event_name == 'workflow_dispatch' || needs.code-detect.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 GTK3 构建依赖
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            cmake ninja-build pkg-config clang libgtk-3-dev libsecret-1-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter build linux --release
+
+      - name: 打包 tar.gz + SHA256
+        run: |
+          set -e
+          VERSION=$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          mkdir -p dist
+          tar -czf "dist/prompt-optimizer-linux-x64-${VERSION}.tar.gz" \
+            -C build/linux/x64/release/bundle .
+          cd dist && sha256sum prompt-optimizer-*.tar.gz > SHA256SUMS.txt
+          ls -lh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prompt-optimizer-linux
+          path: dist/*
+          if-no-files-found: error
+
+  build-windows:
+    name: ③b 构建打包 · Windows (zip)
+    needs: [code-detect, quality]
+    if: github.event_name == 'workflow_dispatch' || needs.code-detect.outputs.changed == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter build windows --release
+
+      - name: 打包 zip + SHA256
+        shell: bash
+        run: |
+          set -e
+          VERSION=$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          mkdir -p dist
+          7z a -bd "dist/prompt-optimizer-windows-x64-${VERSION}.zip" \
+            ./build/windows/x64/runner/Release/*
+          cd dist && sha256sum prompt-optimizer-*.zip > SHA256SUMS.txt
+          ls -lh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prompt-optimizer-windows
+          path: dist/*
+          if-no-files-found: error
+
+  build-android:
+    name: ③c 构建打包 · Android (APK + AAB)
+    needs: [code-detect, quality]
+    if: github.event_name == 'workflow_dispatch' || needs.code-detect.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # 可选 release 签名：仓库 Settings → Secrets and variables → Actions 配置
+      #   ANDROID_KEYSTORE_BASE64  （keystore 文件 base64）
+      #   ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD
+      # 未配置时自动回退 debug 签名（构建不中断，仅产物仅限内部使用）
+      - name: 配置 release 签名（可选）
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -e
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android/upload-keystore.jks
+            cat > android/key.properties <<EOF
+          storePassword=$KS_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=upload-keystore.jks
+          EOF
+            echo "✅ 已注入 release 签名配置"
+          else
+            echo "ℹ️ 未配置签名 Secrets，使用 debug 签名回退（仅内部使用）"
+          fi
+
+      - run: yes | flutter doctor --android-licenses >/dev/null || true
+
+      - name: 构建 split APK + AAB
+        run: |
+          set -e
+          flutter build apk --release --split-per-abi
+          flutter build appbundle --release
+
+      - name: 归集产物 + SHA256
+        run: |
+          set -e
+          VERSION=$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/*.apk dist/
+          cp build/app/outputs/bundle/release/*.aab \
+            "dist/prompt-optimizer-${VERSION}.aab"
+          cd dist && sha256sum * > SHA256SUMS.txt
+          ls -lh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prompt-optimizer-android
+          path: dist/*
+          if-no-files-found: error

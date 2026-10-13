@@ -1,0 +1,39 @@
+name: prompt_optimizer
+description: 跨平台提示词优化工具（Windows / Linux / Android），聚合国内主流大模型。
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # 网络（OpenAI 兼容 API + SSE 流式）
+  dio: ^5.7.0
+  # 桌面 Fluent Design 组件库（对齐基准项目视觉语言）
+  fluent_ui: ^4.11.0
+  # 密钥安全存储：Windows DPAPI / Linux libsecret / Android Keystore / Web WebCrypto
+  flutter_secure_storage: ^9.2.2
+  # SQLite 数据层（native；web 端走 conditional import 的本地存储实现）
+  sqlite3: ^2.4.0
+  sqlite3_flutter_libs: ^0.5.24
+  # 系统能力
+  path_provider: ^2.1.4
+  path: ^1.9.0
+  shared_preferences: ^2.5.0
+  file_selector: ^1.0.3
+  web: ^1.1.0
+  # 工具
+  uuid: ^4.5.1
+  intl: ^0.20.1
+  crypto: ^3.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  mocktail: ^1.0.4
+
+flutter:
+  uses-material-design: true
