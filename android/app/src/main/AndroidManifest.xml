@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 应用内更新：允许拉起系统安装器安装新版本 APK -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="prompt_optimizer"
         android:name="${applicationName}"
@@ -30,6 +32,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- 应用内更新：系统安装器读取缓存中 APK 的授权通道 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

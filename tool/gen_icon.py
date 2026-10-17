@@ -182,6 +182,37 @@ def main():
         master.resize((size, size), Image.LANCZOS).save(p)
         outputs.append(p)
 
+    # Linux freedesktop hicolor 主题（deb/rpm 安装后菜单/启动器图标）
+    # 菜单按像素比请求 16/22/24/32/48/64/128/256，必须逐尺寸落盘，
+    # 否则 GTK 无法命中（会显示占位齿轮或空白）。
+    for size in (16, 22, 24, 32, 48, 64, 128, 256):
+        p = f"packaging/hicolor/{size}x{size}/apps/prompt_optimizer.png"
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        master.resize((size, size), Image.LANCZOS).save(p)
+        outputs.append(p)
+    # scalable 矢量兜底（任意大尺寸缩放不糊）
+    svg = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">\n'
+        '  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">\n'
+        '    <stop offset="0" stop-color="#17C0CB"/>\n'
+        '    <stop offset="1" stop-color="#007983"/>\n'
+        '  </linearGradient></defs>\n'
+        '  <rect x="16" y="16" width="992" height="992" rx="230" fill="url(#g)"/>\n'
+        '  <rect x="16" y="16" width="992" height="992" rx="230" fill="none" '
+        'stroke="#003C42" stroke-opacity="0.27" stroke-width="12"/>\n'
+        '  <path d="M425 260 Q425 425 590 425 Q425 425 425 590 Q425 425 260 425 '
+        'Q425 425 425 260 Z" fill="#fff"/>\n'
+        '  <path d="M722 176 Q722 265 811 265 Q722 265 722 354 Q722 265 633 265 '
+        'Q722 265 722 176 Z" fill="#fff"/>\n'
+        '</svg>\n'
+    )
+    svg_path = "packaging/hicolor/scalable/apps/prompt_optimizer.svg"
+    os.makedirs(os.path.dirname(svg_path), exist_ok=True)
+    with open(svg_path, "w", encoding="utf-8") as f:
+        f.write(svg)
+    outputs.append(svg_path)
+
     print("\n产出清单：")
     for p in outputs:
         if p.endswith(".png"):

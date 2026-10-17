@@ -2,8 +2,10 @@
 library;
 
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/settings_service.dart';
+import '../services/update_service.dart';
 import '../state/app_state.dart';
 import 'ui/pages/history_page.dart';
 import 'ui/pages/model_config_page.dart';
@@ -11,6 +13,7 @@ import 'ui/pages/review_edit_page.dart';
 import 'ui/pages/settings_page.dart';
 import 'ui/pages/workbench_page.dart';
 import 'ui/theme.dart';
+import 'ui/update_dialog.dart';
 
 class PromptOptimizerApp extends StatelessWidget {
   const PromptOptimizerApp({super.key});
@@ -181,12 +184,80 @@ class AppShellState extends State<AppShell> {
   }
 }
 
-/// 导航栏底部版本模块：版本号 + 版本检测按钮（对齐规范排版）
-class _VersionBlock extends StatelessWidget {
+/// 导航栏底部版本模块：版本号（读自 pubspec 构建元数据）+ 真实检查更新。
+///
+/// 更新链路：UpdateService（GitHub Release 检测）→ UpdateDialog
+/// （新版本信息 + 下载进度 + 安装反馈，平台安装器执行升级）。
+class _VersionBlock extends StatefulWidget {
   const _VersionBlock();
 
-  static const String appVersion = 'v1.0.0';
-  static const String buildNumber = 'Build 20261006';
+  @override
+  State<_VersionBlock> createState() => _VersionBlockState();
+}
+
+class _VersionBlockState extends State<_VersionBlock> {
+  String? _versionLabel; // 展示标签：v1.0.0 · Build 1
+  String _rawVersion = '0.0.0'; // 比较用原始版本号（来自构建元数据）
+  bool _checking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    String label;
+    var raw = _rawVersion;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      label = 'v${info.version} · Build ${info.buildNumber}';
+      raw = info.version;
+    } catch (_) {
+      label = 'v- · Build -'; // 构建元数据不可用（如测试环境未 mock）
+    }
+    if (mounted) {
+      setState(() {
+        _versionLabel = label;
+        _rawVersion = raw;
+      });
+    }
+  }
+
+  Future<void> _checkUpdate() async {
+    if (_checking) return;
+    setState(() => _checking = true);
+    final service = UpdateService.debugOverride?.call() ?? UpdateService();
+    try {
+      final result = await service.checkLatest(_rawVersion);
+      if (!mounted) return;
+      if (result == null) {
+        displayInfoBar(context, builder: (context, close) => InfoBar(
+              title: const Text('✓ 当前已是最新版本'),
+              severity: InfoBarSeverity.success,
+              onClose: close,
+            ));
+      } else {
+        await showUpdateDialog(context, result: result, service: service);
+      }
+    } on UpdateException catch (e) {
+      if (!mounted) return;
+      displayInfoBar(context, builder: (context, close) => InfoBar(
+            title: Text('检查更新失败：${e.message}'),
+            severity: InfoBarSeverity.error,
+            onClose: close,
+          ));
+    } catch (e) {
+      if (!mounted) return;
+      displayInfoBar(context, builder: (context, close) => InfoBar(
+            title: Text('检查更新失败：$e'),
+            severity: InfoBarSeverity.error,
+            onClose: close,
+          ));
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -214,29 +285,28 @@ class _VersionBlock extends StatelessWidget {
             child: const Text('✨', style: TextStyle(fontSize: 14)),
           ),
           const SizedBox(width: 9),
-          const Expanded(
+          Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('提示词优化工具',
+              const Text('提示词优化工具',
                   style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
                   overflow: TextOverflow.ellipsis),
-              SizedBox(height: 1),
-              Text('$appVersion · $buildNumber',
-                  style: TextStyle(fontSize: 10.5, color: AppTokens.text3),
+              const SizedBox(height: 1),
+              Text(_versionLabel ?? '正在读取版本…',
+                  style: const TextStyle(fontSize: 10.5, color: AppTokens.text3),
                   overflow: TextOverflow.ellipsis),
             ]),
           ),
         ]),
         const SizedBox(height: 9),
         Button(
-          onPressed: () {
-            displayInfoBar(context, builder: (context, close) => InfoBar(
-                  title: const Text('✓ 当前已是最新版本'),
-                  severity: InfoBarSeverity.success,
-                  onClose: close,
-                ));
-          },
-          child: const Center(
-              child: Text('检查更新', style: TextStyle(fontSize: 12))),
+          onPressed: _checking ? null : _checkUpdate,
+          child: Center(
+              child: _checking
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: ProgressRing(strokeWidth: 2))
+                  : const Text('检查更新', style: TextStyle(fontSize: 12))),
         ),
       ]),
     );

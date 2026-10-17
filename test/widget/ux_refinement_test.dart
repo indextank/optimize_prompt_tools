@@ -5,7 +5,9 @@ library;
 
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:prompt_optimizer/app.dart';
+import 'package:prompt_optimizer/services/update_service.dart';
 import 'package:prompt_optimizer/core/models.dart';
 import 'package:prompt_optimizer/services/llm_client.dart';
 import 'package:prompt_optimizer/services/settings_service.dart';
@@ -79,14 +81,28 @@ void main() {
 
   group('② 导航栏版本模块', () {
     testWidgets('底部展示版本号与检查更新按钮，无平台标注', (tester) async {
+      PackageInfo.setMockInitialValues(
+          appName: 'prompt_optimizer',
+          packageName: 'dev.promptoptimizer.prompt_optimizer',
+          version: '1.0.0',
+          buildNumber: '1',
+          buildSignature: '');
+      UpdateService.debugOverride = () => _FakeLatestService();
       await pumpAt(tester, const PromptOptimizerApp(), 1440, 900);
       expect(find.text('提示词优化工具'), findsWidgets); // 导航底部版本模块
-      expect(find.text('v1.0.0 · Build 20261006'), findsOneWidget);
+      expect(find.text('v1.0.0 · Build 1'), findsOneWidget);
       expect(find.text('检查更新'), findsOneWidget);
       expect(find.textContaining('Win / Linux / Android'), findsNothing);
     });
 
     testWidgets('点击检查更新弹出结果提示', (tester) async {
+      PackageInfo.setMockInitialValues(
+          appName: 'prompt_optimizer',
+          packageName: 'dev.promptoptimizer.prompt_optimizer',
+          version: '1.0.0',
+          buildNumber: '1',
+          buildSignature: '');
+      UpdateService.debugOverride = () => _FakeLatestService();
       await pumpAt(tester, const PromptOptimizerApp(), 1440, 900);
       await tester.tap(find.text('检查更新'));
       await tester.pump();
@@ -150,4 +166,12 @@ void main() {
       expect(find.textContaining('✗'), findsOneWidget);
     });
   });
+}
+
+/// 假更新服务：固定返回"已是最新"（避免 widget 测试触网）
+class _FakeLatestService extends UpdateService {
+  @override
+  Future<UpdateCheckResult?> checkLatest(String currentVersion,
+          {String? platform}) async =>
+      null;
 }
