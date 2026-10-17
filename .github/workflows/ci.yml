@@ -9,11 +9,19 @@
 #   ① code-detect   —— 检测近 7 天核心路径（lib/test/assets/tool/四端工程/pubspec*）
 #                      是否有代码变更；无变更则整条流水线跳过
 #   ② quality       —— flutter analyze + 全量测试（质量门禁，失败则不构建）
-#   ③ build-*       —— 三平台并行出包（Linux tar.gz / Windows zip / Android
-#                      split APK + AAB），产物命名带版本号 + SHA256，上传 Artifacts
+#   ③ build-*       —— 三平台并行出包（Linux tar.gz+deb+rpm+AppImage / Windows
+#                      zip / Android split APK + AAB），产物命名带版本号 +
+#                      SHA256SUMS.txt，上传 Artifacts
 #
 # 说明：
-#   - 本工作流仅使用标准 Flutter 命令，不依赖仓库外的本地脚本
+#   - 仅使用标准 Flutter 命令 + 系统打包工具，不依赖仓库外的本地脚本
+#     （三端一键脚本被 .gitignore 排除、不入库，故其 deb/rpm/AppImage 逻辑
+#      已等价内联至本工作流，改打包规则需同步 build-linux.sh 保持一致）
+#   - Linux 桌面产物命名与应用内更新 selectAsset 契约一致：
+#       tar.gz    prompt-optimizer-linux-x64-<ver>.tar.gz
+#       AppImage  prompt-optimizer-linux-x64.AppImage
+#       deb       prompt-optimizer_<ver>_amd64.deb
+#       rpm       prompt-optimizer-<ver>-1.x86_64.rpm
 #   - Android 未配置签名 Secrets 时自动回退 debug 签名（仅内部使用）；
 #     配置 Secrets 后（见 android 签名步骤注释）自动切换正式签名
 # ============================================================================
@@ -91,18 +99,19 @@ jobs:
 
   # ---------------------------------------------------------------- ③ 三平台构建打包
   build-linux:
-    name: ③a 构建打包 · Linux (tar.gz)
+    name: ③a 构建打包 · Linux (tar.gz + deb + rpm + AppImage)
     needs: [code-detect, quality]
     if: github.event_name == 'workflow_dispatch' || needs.code-detect.outputs.changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: 安装 GTK3 构建依赖
+      - name: 安装 GTK3 构建与打包依赖
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends \
-            cmake ninja-build pkg-config clang libgtk-3-dev libsecret-1-dev
+            cmake ninja-build pkg-config clang libgtk-3-dev libsecret-1-dev \
+            rpm
 
       - uses: subosito/flutter-action@v2
         with:
@@ -112,15 +121,156 @@ jobs:
 
       - run: flutter build linux --release
 
-      - name: 打包 tar.gz + SHA256
+      - name: 打包 tar.gz + deb + rpm + AppImage
         run: |
           set -e
           VERSION=$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
-          mkdir -p dist
-          tar -czf "dist/prompt-optimizer-linux-x64-${VERSION}.tar.gz" \
-            -C build/linux/x64/release/bundle .
-          cd dist && sha256sum prompt-optimizer-*.tar.gz > SHA256SUMS.txt
-          ls -lh
+          BUNDLE="build/linux/x64/release/bundle"
+          PKG_NAME="prompt-optimizer"
+          ICON_256="linux/runner/resources/app_icon.png"
+          DESKTOP="build/packaging/prompt-optimizer.desktop"
+          HICOLOR="packaging/hicolor"
+          mkdir -p dist build/packaging
+
+          # 桌面入口（deb/rpm/AppImage 共用）
+          cat > "$DESKTOP" <<'EOF'
+          [Desktop Entry]
+          Name=提示词优化工具
+          Comment=AI 提示词优化工具 - 将原始提示词优化为结构化高质量提示词
+          Exec=prompt_optimizer
+          Icon=prompt_optimizer
+          Terminal=false
+          Type=Application
+          Categories=Utility;Development;
+          StartupWMClass=prompt_optimizer
+          EOF
+
+          # 启动 wrapper：目标必须与实际安装目录一致（连字符 PKG_NAME），
+          # 用参数注入避免硬编码分隔符导致 exec not found
+          write_wrapper() { # $1=目标路径 $2=可执行绝对路径
+            printf '#!/bin/sh\nexec %s "$@"\n' "$2" > "$1"
+            chmod +x "$1"
+          }
+
+          # 多尺寸 hicolor 图标（仅 256 会导致菜单小尺寸请求命中失败）
+          install_hicolor() { # $1=目标根目录
+            local dst="$1/usr/share/icons/hicolor"
+            mkdir -p "$dst"
+            if [ -d "$HICOLOR" ]; then cp -r "$HICOLOR/." "$dst/";
+            else mkdir -p "$dst/256x256/apps"; cp "$ICON_256" "$dst/256x256/apps/prompt_optimizer.png"; fi
+          }
+
+          # ---- tar.gz（必出）----
+          tar -czf "dist/${PKG_NAME}-linux-x64-${VERSION}.tar.gz" -C "$BUNDLE" .
+
+          # ---- deb ----
+          DEB_ROOT="build/deb/root"
+          rm -rf "$DEB_ROOT"
+          mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT/usr/lib/${PKG_NAME}" \
+                   "$DEB_ROOT/usr/bin" "$DEB_ROOT/usr/share/applications"
+          cp -r "$BUNDLE/." "$DEB_ROOT/usr/lib/${PKG_NAME}/"
+          write_wrapper "$DEB_ROOT/usr/bin/prompt_optimizer" \
+            "/usr/lib/${PKG_NAME}/prompt_optimizer"
+          cp "$DESKTOP" "$DEB_ROOT/usr/share/applications/"
+          install_hicolor "$DEB_ROOT"
+          for hook in postinst postrm; do
+            cat > "$DEB_ROOT/DEBIAN/$hook" <<'HOOK'
+          #!/bin/sh
+          set -e
+          command -v update-desktop-database >/dev/null 2>&1 && \
+            update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || true
+          command -v gtk-update-icon-cache >/dev/null 2>&1 && \
+            gtk-update-icon-cache -q -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
+          exit 0
+          HOOK
+            chmod 755 "$DEB_ROOT/DEBIAN/$hook"
+          done
+          INSTALLED_KB="$(du -sk "$DEB_ROOT" | cut -f1)"
+          cat > "$DEB_ROOT/DEBIAN/control" <<EOF
+          Package: ${PKG_NAME}
+          Version: ${VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Prompt Optimizer Team <dev@prompt-optimizer.local>
+          Installed-Size: ${INSTALLED_KB}
+          Depends: libgtk-3-0 | libgtk-3-0t64, libsecret-1-0
+          Description: 提示词优化工具（AI Prompt Optimizer）
+           将原始提示词优化为结构化、可直接投喂给 AI 的高质量提示词。
+          EOF
+          dpkg-deb --build --root-owner-group "$DEB_ROOT" \
+            "dist/${PKG_NAME}_${VERSION}_amd64.deb"
+
+          # ---- rpm ----
+          RPM_TOP="build/rpm/top"
+          RPM_SRC="$RPM_TOP/SOURCES/root"
+          rm -rf "$RPM_TOP"
+          mkdir -p "$RPM_TOP"/{RPMS,SRPMS,BUILD,SPECS,SOURCES} \
+                   "$RPM_SRC/usr/lib/${PKG_NAME}" "$RPM_SRC/usr/bin" \
+                   "$RPM_SRC/usr/share/applications"
+          cp -r "$BUNDLE/." "$RPM_SRC/usr/lib/${PKG_NAME}/"
+          write_wrapper "$RPM_SRC/usr/bin/prompt_optimizer" \
+            "/usr/lib/${PKG_NAME}/prompt_optimizer"
+          cp "$DESKTOP" "$RPM_SRC/usr/share/applications/"
+          install_hicolor "$RPM_SRC"
+          cat > "$RPM_TOP/SPECS/${PKG_NAME}.spec" <<EOF
+          Name:           ${PKG_NAME}
+          Version:        ${VERSION}
+          Release:        1%{?dist}
+          Summary:        提示词优化工具（AI Prompt Optimizer）
+          License:        Proprietary
+          URL:            https://prompt-optimizer.local
+          BuildArch:      x86_64
+          AutoReqProv:    no
+          Requires:       gtk3, libsecret
+
+          %description
+          将原始提示词优化为结构化、可直接投喂给 AI 的高质量提示词。
+
+          %install
+          rm -rf %{buildroot}
+          mkdir -p %{buildroot}
+          cp -a %{_sourcedir}/root/. %{buildroot}/
+
+          %post
+          command -v update-desktop-database >/dev/null 2>&1 && \
+            update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || :
+          command -v gtk-update-icon-cache >/dev/null 2>&1 && \
+            gtk-update-icon-cache -q -t /usr/share/icons/hicolor >/dev/null 2>&1 || :
+
+          %files
+          /usr/lib/${PKG_NAME}
+          /usr/bin/prompt_optimizer
+          /usr/share/applications/prompt-optimizer.desktop
+          /usr/share/icons/hicolor
+          EOF
+          rpmbuild -bb --define "_topdir $(pwd)/$RPM_TOP" \
+            "$RPM_TOP/SPECS/${PKG_NAME}.spec" >/tmp/rpmbuild.log 2>&1 \
+            || { echo "⚠️ rpm 构建失败（其余产物不受影响）"; tail -20 /tmp/rpmbuild.log; }
+          RPM_OUT="$(find "$RPM_TOP/RPMS" -name '*.rpm' 2>/dev/null | head -1)"
+          [ -n "$RPM_OUT" ] && cp "$RPM_OUT" \
+            "dist/${PKG_NAME}-${VERSION}-1.x86_64.rpm" || true
+
+          # ---- AppImage（appimagetool 用 --appimage-extract-and-run，免 FUSE）----
+          APPDIR="build/appimage/PromptOptimizer.AppDir"
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr/bin"
+          cp -r "$BUNDLE/." "$APPDIR/usr/bin/"
+          cp "$DESKTOP" "$APPDIR/prompt-optimizer.desktop"
+          cp "$ICON_256" "$APPDIR/prompt_optimizer.png"
+          printf '#!/bin/sh\ncd "$(dirname "$0")/usr/bin" && exec ./prompt_optimizer "$@"\n' \
+            > "$APPDIR/AppRun"
+          chmod +x "$APPDIR/AppRun"
+          curl -sL --max-time 300 -o /tmp/appimagetool \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x /tmp/appimagetool
+          ARCH=x86_64 /tmp/appimagetool --appimage-extract-and-run "$APPDIR" \
+            "dist/${PKG_NAME}-linux-x64.AppImage" >/tmp/appimagetool.log 2>&1 \
+            || { echo "⚠️ AppImage 生成失败（其余产物不受影响）"; tail -20 /tmp/appimagetool.log; }
+          [ -f "dist/${PKG_NAME}-linux-x64.AppImage" ] && \
+            chmod +x "dist/${PKG_NAME}-linux-x64.AppImage" || true
+
+          cd dist && sha256sum * > SHA256SUMS.txt && ls -lh
 
       - uses: actions/upload-artifact@v4
         with:
