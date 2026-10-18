@@ -53,6 +53,9 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 # System-level dependencies.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
+# X11：runner 用 XSetClassHint 强制 WM_CLASS（任务栏"固定到面板"依赖与
+# .desktop 的 StartupWMClass 匹配）；libx11-dev 为 libgtk-3-dev 的传递依赖。
+pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
 
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")

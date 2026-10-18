@@ -61,4 +61,39 @@ void main() {
     expect(callCount, greaterThanOrEqualTo(2),
         reason: 'deb 与 rpm 两处 write_wrapper 调用都必须传入一致的可执行路径');
   });
+
+  test('WM_CLASS 匹配链路完好（任务栏"固定到面板"依赖）', () {
+    // runner 必须强制 X11 WM_CLASS 为小写 application_id
+    final cc = File('linux/runner/my_application.cc').readAsStringSync();
+    expect(cc, contains('XSetClassHint'),
+        reason: 'runner 必须调用 XSetClassHint 统一 WM_CLASS');
+    expect(cc, contains('my_application_set_wm_class(window)'),
+        reason: 'activate 必须在窗口 realize 后调用 set_wm_class');
+
+    // CMake 必须链接 X11（XSetClassHint 所在库）
+    final cmake = File('linux/CMakeLists.txt').readAsStringSync();
+    expect(cmake, contains('pkg_check_modules(X11'),
+        reason: '顶层 CMake 必须声明 X11 依赖');
+    final runnerCmake = File('linux/runner/CMakeLists.txt').readAsStringSync();
+    expect(runnerCmake, contains('PkgConfig::X11'),
+        reason: 'runner 必须链接 X11，否则 WM_CLASS 设置链接失败');
+
+    // .desktop 生成源（打包脚本/CI）的 StartupWMClass 必须等于 APPLICATION_ID
+    const appId = 'dev.promptoptimizer.prompt_optimizer';
+    final sources = ['build-linux.sh', '.github/workflows/ci.yml', '.github/workflows/release.yml'];
+    for (final src in sources) {
+      final f = File(src);
+      if (!f.existsSync()) continue; // 脚本/workflow 可能缺失，存在才校验
+      final content = f.readAsStringSync();
+      expect(content, contains('StartupWMClass=$appId'),
+          reason: '$src 的 .desktop StartupWMClass 必须与 APPLICATION_ID 一致'
+              '（不一致则任务栏无"固定到面板"选项）');
+      expect(content, isNot(contains('StartupWMClass=prompt_optimizer\n')),
+          reason: '$src 不得残留旧的短名 StartupWMClass');
+    }
+
+    // CMakeLists 中的 APPLICATION_ID 与上述一致
+    expect(cmake, contains('set(APPLICATION_ID "$appId")'),
+        reason: 'APPLICATION_ID 定义必须与 .desktop StartupWMClass 一致');
+  });
 }

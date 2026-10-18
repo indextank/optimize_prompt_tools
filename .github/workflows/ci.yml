@@ -142,7 +142,7 @@ jobs:
           Terminal=false
           Type=Application
           Categories=Utility;Development;
-          StartupWMClass=prompt_optimizer
+          StartupWMClass=dev.promptoptimizer.prompt_optimizer
           EOF
 
           # 启动 wrapper：目标必须与实际安装目录一致（连字符 PKG_NAME），

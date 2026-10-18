@@ -74,3 +74,4 @@ dist/
 android/key.properties
 **/*.jks
 **/*.keystore
+test/

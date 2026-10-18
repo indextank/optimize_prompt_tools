@@ -2,6 +2,7 @@
 
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
+#include <X11/Xlib.h>
 #include <gdk/gdkx.h>
 #endif
 
@@ -35,6 +36,31 @@ static void my_application_set_window_icon(GtkWindow* window) {
   // 加载失败不致命（无图标仍可正常使用），忽略错误。
   gtk_window_set_default_icon_from_file(icon_path, nullptr);
   gtk_window_set_icon_from_file(window, icon_path, nullptr);
+}
+
+// 强制 X11 窗口的 WM_CLASS 为小写 application_id。
+//
+// 背景：GTK 默认把 WM_CLASS 的 class 字段首字母大写（application_id →
+// "Dev.promptoptimizer.prompt_optimizer"），与 .desktop 的 StartupWMClass
+// 无法一致匹配，导致 Cinnamon 面板不提供"固定到面板"选项。
+//
+// 统一策略：X11/Wayland 都用小写 application_id（Wayland 的 app_id 本就是
+// 小写），.desktop 的 StartupWMClass 也随之写小写，两端一致。
+//
+// 调用时机：必须在窗口 realize（映射到 X server）之后才生效。
+static void my_application_set_wm_class(GtkWindow* window) {
+#ifdef GDK_WINDOWING_X11
+  GdkWindow* gdk_window = gtk_widget_get_window(GTK_WIDGET(window));
+  if (gdk_window == nullptr || !GDK_IS_X11_WINDOW(gdk_window)) {
+    return;  // Wayland 或未 realize，跳过
+  }
+  Display* display = GDK_WINDOW_XDISPLAY(gdk_window);
+  Window xid = GDK_WINDOW_XID(gdk_window);
+  XClassHint hint;
+  hint.res_name = const_cast<char*>(APPLICATION_ID);
+  hint.res_class = const_cast<char*>(APPLICATION_ID);
+  XSetClassHint(display, xid, &hint);
+#endif
 }
 
 // Called when first Flutter frame received.
@@ -96,6 +122,9 @@ static void my_application_activate(GApplication* application) {
   g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
                            self);
   gtk_widget_realize(GTK_WIDGET(view));
+  // 窗口 realize 后统一 X11 WM_CLASS 为小写 application_id，
+  // 与 .desktop 的 StartupWMClass 一致（任务栏"固定到面板"依赖此匹配）。
+  my_application_set_wm_class(window);
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
