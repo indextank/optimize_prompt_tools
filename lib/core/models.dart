@@ -516,3 +516,65 @@ class ClarifyQuestion {
         decides: j['decides'] as String? ?? '',
       );
 }
+
+/// 编程预置词：为「AI 编程 / Bug 修复」场景提供技术背景
+///（目标平台、编程语言、技术架构等）。优化时以独立背景段注入 AI 请求，
+/// 仅用于说明待优化提示词所处的技术环境，**不是**待优化对象。
+class CodingPreset {
+  const CodingPreset({
+    required this.id,
+    required this.name,
+    required this.content,
+    required this.createdAt,
+  });
+
+  final String id;
+
+  /// 显示名称（必填、全局唯一，作为下拉选项展示）
+  final String name;
+
+  /// 技术背景内容（≤ [maxContentChars] 字；可为空，空内容注入时自动忽略）
+  final String content;
+
+  /// 创建时间（epoch 秒）
+  final int createdAt;
+
+  /// 内容字数上限（300 个汉字）
+  static const int maxContentChars = 300;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'content': content,
+        'created_at': createdAt,
+      };
+
+  factory CodingPreset.fromJson(Map<String, dynamic> j) => CodingPreset(
+        id: j['id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        content: j['content'] as String? ?? '',
+        createdAt: j['created_at'] as int? ?? 0,
+      );
+}
+
+/// 编程预置词校验（存储层统一执行：名称必填 / 名称唯一 / 内容长度上限）。
+///
+/// [existing] 为当前已保存的全部预置词；编辑场景传 [selfId] 排除自身。
+/// 校验失败抛 [FormatException]，其消息可直接展示给用户。
+void validatePreset(CodingPreset preset, List<CodingPreset> existing,
+    {String? selfId}) {
+  final name = preset.name.trim();
+  if (name.isEmpty) {
+    throw const FormatException('名称不能为空');
+  }
+  if (preset.content.length > CodingPreset.maxContentChars) {
+    throw FormatException(
+        '内容最多 ${CodingPreset.maxContentChars} 字，当前 ${preset.content.length} 字');
+  }
+  final excludeId = selfId ?? preset.id;
+  final duplicated = existing.any((p) =>
+      p.id != excludeId && p.name.trim().toLowerCase() == name.toLowerCase());
+  if (duplicated) {
+    throw FormatException('名称「$name」已存在，请更换名称');
+  }
+}

@@ -61,6 +61,7 @@ class ParallelScheduler {
     OptimizeMode mode = OptimizeMode.deep,
     OutputStyle style = OutputStyle.full,
     SceneTemplate scene = kDefaultScene,
+    CodingPreset? preset,
     void Function(String provider, String accumulated)? onItemProgress,
   }) {
     if (services.length != apiKeys.length) {
@@ -87,6 +88,7 @@ class ParallelScheduler {
             mode: mode,
             style: style,
             scene: scene,
+            preset: preset,
             cancelToken: st.cancelToken,
             onProgress: (t) {
               st.streamedText = t;

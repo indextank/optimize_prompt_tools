@@ -57,6 +57,19 @@ class WebStorage implements AppStorage {
   }
 
   @override
+  Future<void> reorderServices(List<String> orderedIds) async {
+    final list = _readList(_svcKey);
+    final byId = {for (final j in list) j['id'] as String: j};
+    final reordered = [
+      for (final id in orderedIds)
+        if (byId.containsKey(id)) byId.remove(id)!,
+      // 防御：未列出的条目保留在末尾
+      ...byId.values,
+    ];
+    await _writeList(_svcKey, reordered);
+  }
+
+  @override
   Future<void> deleteService(String id) async {
     final list = _readList(_svcKey)..removeWhere((j) => j['id'] == id);
     await _writeList(_svcKey, list);
@@ -160,6 +173,34 @@ class WebStorage implements AppStorage {
   Future<void> deleteTemplate(String id) async {
     final list = _readList(_tplKey)..removeWhere((j) => j['id'] == id);
     await _writeList(_tplKey, list);
+  }
+
+  // ---------------- 编程预置词 ----------------
+  static const _presetKey = 'coding_presets';
+
+  @override
+  Future<List<CodingPreset>> loadPresets() async => [
+        for (final j in _readList(_presetKey)) CodingPreset.fromJson(j)
+      ];
+
+  @override
+  Future<void> savePreset(CodingPreset preset) async {
+    // 后端校验：名称必填/唯一、内容长度上限（编辑时排除自身）
+    validatePreset(preset, await loadPresets(), selfId: preset.id);
+    final list = _readList(_presetKey);
+    final idx = list.indexWhere((j) => j['id'] == preset.id);
+    if (idx >= 0) {
+      list[idx] = preset.toJson();
+    } else {
+      list.add(preset.toJson());
+    }
+    await _writeList(_presetKey, list);
+  }
+
+  @override
+  Future<void> deletePreset(String id) async {
+    final list = _readList(_presetKey)..removeWhere((j) => j['id'] == id);
+    await _writeList(_presetKey, list);
   }
 
   // ---------------- 设置项 ----------------

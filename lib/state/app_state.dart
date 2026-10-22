@@ -38,6 +38,9 @@ class WorkbenchSession {
   /// 并行对比选中的对比服务（单选，跟随会话；须不同于当前生效服务）
   String? parallelServiceId;
 
+  /// 编程预置词选中项（可为空；仅 AI 编程/Bug 修复场景展示该下拉）
+  String? presetId;
+
   /// 流式中间文本（按服务 id 分组）
   final Map<String, String> streaming = {};
 
@@ -102,6 +105,7 @@ class AppState extends ChangeNotifier {
 
   List<ServiceConfig> services = [];
   List<SceneTemplate> customTemplates = [];
+  List<CodingPreset> presets = [];
 
   static const _uuid = Uuid();
 
@@ -115,6 +119,7 @@ class AppState extends ChangeNotifier {
   Future<void> init() async {
     services = await storage.loadServices();
     customTemplates = await storage.loadCustomTemplates();
+    presets = await storage.loadPresets();
     // 默认服务一致性：设置里记录的 id 失效时回退到第一个 isDefault
     final defaultId = settings.settings.defaultServiceId;
     if (defaultId.isNotEmpty && services.every((s) => s.id != defaultId)) {
@@ -122,6 +127,41 @@ class AppState extends ChangeNotifier {
     }
     // 启动时按保留天数清理历史
     await storage.purgeExpiredRecords(settings.settings.retentionDays);
+    notifyListeners();
+  }
+
+  /// 拖动调整服务顺序（仅排序持久化；不影响默认服务/并行门槛等业务状态）
+  Future<void> reorderServices(List<String> orderedIds) async {
+    await storage.reorderServices(orderedIds);
+    services = await storage.loadServices();
+    notifyListeners();
+  }
+
+  // -------------------------------------------------------------- 编程预置词
+  /// 当前会话选中的编程预置词（未选择或已删除时为 null）
+  CodingPreset? get selectedPreset {
+    final id = session.presetId;
+    if (id == null || id.isEmpty) return null;
+    return presets.where((p) => p.id == id).firstOrNull;
+  }
+
+  /// 重新拉取预置词列表（页面初始化 / 失败重试）
+  Future<void> refreshPresets() async {
+    presets = await storage.loadPresets();
+    notifyListeners();
+  }
+
+  /// 保存（新增/编辑）；名称必填/唯一、内容 ≤300 字校验失败抛 [FormatException]
+  Future<void> savePreset(CodingPreset preset) async {
+    await storage.savePreset(preset);
+    await refreshPresets();
+  }
+
+  Future<void> deletePreset(String id) async {
+    await storage.deletePreset(id);
+    await refreshPresets();
+    // 被删除的预置词若正被会话引用，清空选择（与删服务清并行选择同惯例）
+    if (session.presetId == id) session.presetId = null;
     notifyListeners();
   }
 
@@ -266,25 +306,26 @@ class AppState extends ChangeNotifier {
 
     final stopwatch = Stopwatch()..start();
     try {
+      final preset = selectedPreset;
       // 并行守卫：设置开启 + 当前并行候选 ≥2 才走并行，否则单模型
       if (settings.settings.parallelEnabled && parallelCandidateCount >= 2) {
-        return await _runParallel(raw, scene, svc, stopwatch);
+        return await _runParallel(raw, scene, svc, stopwatch, preset);
       }
-      return await _runSingle(raw, scene, svc, stopwatch);
+      return await _runSingle(raw, scene, svc, stopwatch, preset);
     } finally {
       session.optimizing = false;
       notifyListeners();
     }
   }
 
-  Future<OptimizeRecord?> _runSingle(
-      String raw, SceneTemplate scene, ServiceConfig svc, Stopwatch sw) async {
+  Future<OptimizeRecord?> _runSingle(String raw, SceneTemplate scene,
+      ServiceConfig svc, Stopwatch sw, CodingPreset? preset) async {
     final key = await readApiKey(svc) ?? '';
     final token = session.cancelToken = CancelToken();
     try {
       if (session.mode == OptimizeMode.ask) {
         final qs = await engine.askQuestions(svc, key, raw,
-            scene: scene, cancelToken: token);
+            scene: scene, preset: preset, cancelToken: token);
         session.questions = qs;
         session.answers = List.filled(qs.length, null);
         session.askAnswering = true;
@@ -297,6 +338,7 @@ class AppState extends ChangeNotifier {
         raw,
         mode: session.mode,
         scene: scene,
+        preset: preset,
         cancelToken: token,
         onProgress: (t) {
           session.streaming[svc.id] = t;
@@ -331,8 +373,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<OptimizeRecord?> _runParallel(
-      String raw, SceneTemplate scene, ServiceConfig primary, Stopwatch sw) async {
+  Future<OptimizeRecord?> _runParallel(String raw, SceneTemplate scene,
+      ServiceConfig primary, Stopwatch sw, CodingPreset? preset) async {
     // 并行集合：当前生效服务 + 工作台选中的对比服务（单选）
     final ids = <String>{
       primary.id,
@@ -343,6 +385,7 @@ class AppState extends ChangeNotifier {
 
     final (events, dropped) = scheduler.run(svcs, keys, raw,
         mode: session.mode, style: session.outputStyle, scene: scene,
+        preset: preset,
         onItemProgress: (id, t) {
       session.streaming[id] = t;
       notifyListeners();
@@ -415,6 +458,7 @@ class AppState extends ChangeNotifier {
         session.questions,
         session.answers,
         scene: scene,
+        preset: selectedPreset,
         cancelToken: session.cancelToken = CancelToken(),
         onProgress: (t) {
           session.streaming[svc.id] = t;
@@ -551,6 +595,8 @@ class AppState extends ChangeNotifier {
       'config_version': settingsConfigVersion,
       'exported_at': t.toIso8601String(),
       'settings': settings.settings.toJson(),
+      // 编程预置词随配置一并导出（不含任何密钥），导入时逐条还原
+      'presets': [for (final p in presets) p.toJson()],
     });
   }
 
@@ -584,6 +630,62 @@ class AppState extends ChangeNotifier {
       throw const FormatException('缺少 settings 配置对象');
     }
     return _mergeSettings(Map<String, dynamic>.from(raw));
+  }
+
+  /// 解析导入配置中的编程预置词（可选字段：旧版本导出无此段 → 空列表）。
+  /// 严格校验：结构非法或单条非法（空名称/超 300 字等）整体抛 [FormatException]，
+  /// 调用方在解析全部通过前不得写入任何数据。
+  List<CodingPreset> parseImportedPresets(String json) {
+    Object? decoded;
+    try {
+      decoded = jsonDecode(json);
+    } catch (_) {
+      throw const FormatException('文件内容不是合法的 JSON');
+    }
+    if (decoded is! Map) {
+      throw const FormatException('结构非法：顶层必须是 JSON 对象');
+    }
+    if (decoded['app'] != settingsConfigAppTag) {
+      throw const FormatException('不是提示词优化工具的配置文件');
+    }
+    final raw = decoded['presets'];
+    if (raw == null) return const []; // 兼容旧版导出文件（无预置词段）
+    if (raw is! List) {
+      throw const FormatException('presets 段必须是数组');
+    }
+    final out = <CodingPreset>[];
+    for (final e in raw) {
+      if (e is! Map) {
+        throw const FormatException('预置词条目结构非法：必须是对象');
+      }
+      final p = CodingPreset.fromJson(Map<String, dynamic>.from(e));
+      // 名称唯一性由写入阶段去重处理，此处仅校验必填与长度上限
+      validatePreset(p, const [], selfId: p.id);
+      out.add(p);
+    }
+    return out;
+  }
+
+  /// 还原导入的编程预置词：同 id 覆盖更新；不同 id 名称冲突时自动去重命名
+  ///（追加「 (2)」递增），保证导入不中断。返回写入条数。
+  Future<int> importPresets(List<CodingPreset> incoming) async {
+    var count = 0;
+    for (final p in incoming) {
+      var name = p.name;
+      var suffix = 2;
+      while (presets.any((e) => e.id != p.id && e.name == name)) {
+        name = '${p.name} (${suffix++})';
+      }
+      await storage.savePreset(CodingPreset(
+        id: p.id,
+        name: name,
+        content: p.content,
+        createdAt: p.createdAt,
+      ));
+      count++;
+    }
+    await refreshPresets();
+    return count;
   }
 
   /// 字段级覆盖：仅校验并合并 settings 对象中出现的字段

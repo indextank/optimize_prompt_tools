@@ -149,11 +149,17 @@ class _ModelConfigPageState extends State<ModelConfigPage> {
                 )
               else
                 for (final svc in services)
-                  _ServiceCard(
-                    service: svc,
-                    status: _connStatus[svc.id],
-                    onEdit: () => _editService(svc),
-                    onDelete: () => _deleteService(svc),
+                  // 按住卡片拖动调整排序（顺序持久化，默认服务/并行门槛不受影响）
+                  _DraggableServiceRow(
+                    key: ValueKey(svc.id),
+                    id: svc.id,
+                    onReorder: _reorderService,
+                    child: _ServiceCard(
+                      service: svc,
+                      status: _connStatus[svc.id],
+                      onEdit: () => _editService(svc),
+                      onDelete: () => _deleteService(svc),
+                    ),
                   ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
@@ -180,6 +186,20 @@ class _ModelConfigPageState extends State<ModelConfigPage> {
         );
       },
     );
+  }
+
+  /// 拖动排序：source 移到 target 的槽位（target 顺移，标准 Reorderable 语义）。
+  /// 目标索引必须在移除 source 之前取，否则向下拖移除后 target 前移，
+  /// 插回原处成为 no-op。
+  void _reorderService(String sourceId, String targetId) {
+    if (sourceId == targetId) return;
+    final ids = [for (final s in appState.services) s.id];
+    final from = ids.indexOf(sourceId);
+    final to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    ids.removeAt(from);
+    ids.insert(to, sourceId);
+    appState.reorderServices(ids);
   }
 
   Widget _row({required String label, required String desc, required Widget child}) {
@@ -366,3 +386,51 @@ class _ServiceCard extends StatelessWidget {
               : AppTokens.text3);
 }
 
+
+
+/// 服务卡拖动排序包装：长按拖起 + 拖至目标卡上松手完成重排，
+/// 悬停目标高亮提示插入位置。仅调整顺序，不改动卡片内部交互。
+class _DraggableServiceRow extends StatelessWidget {
+  const _DraggableServiceRow({
+    super.key,
+    required this.id,
+    required this.child,
+    required this.onReorder,
+  });
+
+  final String id;
+  final Widget child;
+  final void Function(String sourceId, String targetId) onReorder;
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (d) => d.data != id,
+      onAcceptWithDetails: (d) => onReorder(d.data, id),
+      builder: (context, candidate, rejected) {
+        final hovering = candidate.isNotEmpty;
+        return LongPressDraggable<String>(
+          data: id,
+          feedback: Builder(builder: (ctx) {
+            final w =
+                (context.findRenderObject() as RenderBox?)?.size.width ?? 520;
+            return SizedBox(
+                width: w,
+                child: Opacity(opacity: 0.85, child: child));
+          }),
+          childWhenDragging: Opacity(opacity: 0.4, child: child),
+          child: hovering
+              ? Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: FluentTheme.of(context).accentColor, width: 1.5),
+                  ),
+                  child: child,
+                )
+              : child,
+        );
+      },
+    );
+  }
+}

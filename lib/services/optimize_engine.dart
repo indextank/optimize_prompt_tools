@@ -32,6 +32,20 @@ class EngineRunResult {
   final int? totalTokens;
 }
 
+/// 发送给 AI 的优化请求组装结果。
+///
+/// [system] 含技术背景段（如有）；[userMessages] 严格仅为待优化原始提示词
+/// （及重试所需的对话追加），预置词内容绝不混入用户消息。
+class OptimizeRequestPlan {
+  const OptimizeRequestPlan({
+    required this.system,
+    required this.userMessages,
+  });
+
+  final String system;
+  final List<ChatMessage> userMessages;
+}
+
 /// 优化引擎
 class OptimizeEngine {
   OptimizeEngine({required LlmClient client}) : _client = client;
@@ -82,9 +96,11 @@ class OptimizeEngine {
 3. 输出语言跟随用户输入语言。''';
 
   /// 简单模式系统提示词：一段连贯提示词，无分段/JSON 契约（步骤编号列表为唯一例外）
-  static String _buildSimpleSystemPrompt(SceneTemplate scene) => '''
+  static String _buildSimpleSystemPrompt(SceneTemplate scene,
+          {CodingPreset? preset}) =>
+      '''
 $_corePrinciple
-场景：${scene.name}。${scene.promptHint}
+场景：${scene.name}。${scene.promptHint}${_techBgBlock(preset)}
 场景指引仅用于提示需覆盖的信息维度，须将这些维度自然融入连贯正文，不得据此生成小标题、分段或逐项清单。
 当前为简单模式：仅对用户的原始提示词做专业化重述与逻辑完善，精准强化原始需求。
 简单模式下核心原则第 2 条调整为：缺失信息可推断则推断，不可推断则将最小安全假设以自然语句融入正文，不得单独输出「待确认」「假设说明」「diagnosis」等任何附加段。
@@ -103,7 +119,8 @@ $_corePrinciple
 7. 只输出提示词正文本身，不要输出解释、前缀或代码围栏。''';
 
   /// 组装系统提示词
-  String buildSystemPrompt(SceneTemplate scene, OptimizeMode mode) {
+  static String buildSystemPrompt(SceneTemplate scene, OptimizeMode mode,
+      {CodingPreset? preset}) {
     final sb = StringBuffer(_corePrinciple)
       ..writeln()
       ..writeln('场景：${scene.name}。${scene.promptHint}');
@@ -112,13 +129,61 @@ $_corePrinciple
     } else {
       sb.writeln('当前为深度优化模式：先做十维诊断（角色/目标/背景/现状/范围/产出/约束/验收/验证风险/回复格式），再重写。');
     }
+    final techBg = buildTechBackground(preset);
+    if (techBg != null) {
+      sb.writeln();
+      sb.writeln(techBg);
+    }
     sb.writeln(_contractDesc);
     return sb.toString();
   }
 
-  String _buildAskSystemPrompt(SceneTemplate scene) => '''
+  /// 组装「编程预置词」技术背景段（独立可单测）。
+  ///
+  /// 背景段明确声明：预置词内容仅用于说明待优化提示词所处的技术环境
+  ///（平台 / 编程语言 / 技术架构等），**不是**优化对象、禁止拼接进优化结果。
+  /// 未选择（null）或内容为空时返回 null（不注入，优化流程保持现状）。
+  static String? buildTechBackground(CodingPreset? preset) {
+    final content = preset?.content.trim() ?? '';
+    if (content.isEmpty) return null;
+    return '【技术背景】以下内容仅用于帮助理解待优化提示词所处的技术环境'
+        '（如目标平台、编程语言、技术架构等），严禁将其视为需要优化的内容、'
+        '严禁拼接进优化结果：\n$content';
+  }
+
+  /// system 模板内嵌的技术背景块（空内容返回空串，保持模板原样）
+  static String _techBgBlock(CodingPreset? preset) {
+    final bg = buildTechBackground(preset);
+    return bg == null ? '' : '\n\n$bg';
+  }
+
+  /// 发送给 AI 的优化请求组装结果（[OptimizeRequestPlan]）。
+  ///
+  /// [system] 含技术背景段（如有）；[userMessages] 严格仅为待优化原始提示词，
+  /// 预置词内容绝不混入用户消息。
+  /// 组装优化请求（独立可单测）：简单/完整模式共用入口。
+  ///
+  /// [preset] 选定的编程预置词：以独立技术背景段注入 system，
+  /// 与待优化原始提示词（user 消息）明确分离；未选择时请求与现状完全一致。
+  static OptimizeRequestPlan assembleOptimizeRequest({
+    required SceneTemplate scene,
+    required OptimizeMode mode,
+    required OutputStyle style,
+    required String rawText,
+    CodingPreset? preset,
+  }) {
+    final system = style == OutputStyle.simple
+        ? _buildSimpleSystemPrompt(scene, preset: preset)
+        : buildSystemPrompt(scene, mode, preset: preset);
+    return OptimizeRequestPlan(
+      system: system,
+      userMessages: [ChatMessage('user', rawText)],
+    );
+  }
+
+  String _buildAskSystemPrompt(SceneTemplate scene, {CodingPreset? preset}) => '''
 $_corePrinciple
-场景：${scene.name}。${scene.promptHint}
+场景：${scene.name}。${scene.promptHint}${_techBgBlock(preset)}
 当前为提问式优化模式的第一轮：不要直接重写，而是提出 $minAskQuestions-$maxAskQuestions 个会改变方案的关键澄清问题。
 严格按以下 JSON 契约输出（禁止输出 JSON 以外的内容）：
 {
@@ -248,6 +313,7 @@ $_corePrinciple
     OptimizeMode mode = OptimizeMode.deep,
     OutputStyle style = OutputStyle.full,
     SceneTemplate scene = kDefaultScene,
+    CodingPreset? preset,
     CancelToken? cancelToken,
     OptimizeProgress? onProgress,
   }) async {
@@ -262,13 +328,16 @@ $_corePrinciple
 
     final sw = Stopwatch()..start();
     int? totalTokens;
+    // 请求组装统一入口：预置词仅注入 system 作技术背景，user 消息仅为原文
+    final plan = assembleOptimizeRequest(
+        scene: scene, mode: mode, style: style, rawText: raw, preset: preset);
     // 简单模式：单段连贯提示词，无 JSON 契约、无需重试
     if (style == OutputStyle.simple) {
       final text = await _collect(
         _buildRequest(service,
             apiKey: apiKey,
-            system: _buildSimpleSystemPrompt(scene),
-            messages: [ChatMessage('user', raw)]),
+            system: plan.system,
+            messages: plan.userMessages),
         cancelToken: cancelToken,
         onProgress: onProgress,
         onUsage: (t) => totalTokens = t,
@@ -280,8 +349,8 @@ $_corePrinciple
         totalTokens: totalTokens,
       );
     }
-    String system = buildSystemPrompt(scene, mode);
-    var messages = [ChatMessage('user', raw)];
+    String system = plan.system;
+    var messages = [...plan.userMessages];
 
     for (var attempt = 0; attempt < 2; attempt++) {
       final text = await _collect(
@@ -324,13 +393,14 @@ $_corePrinciple
     String apiKey,
     String rawText, {
     SceneTemplate scene = kDefaultScene,
+    CodingPreset? preset,
     CancelToken? cancelToken,
   }) async {
     final raw = rawText.trim();
     if (raw.isEmpty) {
       throw const LlmException(LlmErrorKind.badResponse, '原始提示词不能为空');
     }
-    final system = _buildAskSystemPrompt(scene);
+    final system = _buildAskSystemPrompt(scene, preset: preset);
     var messages = [ChatMessage('user', raw)];
     for (var attempt = 0; attempt < 2; attempt++) {
       final text =
@@ -363,6 +433,7 @@ $_corePrinciple
     List<String?> answers, {
     OutputStyle style = OutputStyle.full,
     SceneTemplate scene = kDefaultScene,
+    CodingPreset? preset,
     CancelToken? cancelToken,
     OptimizeProgress? onProgress,
   }) async {
@@ -381,7 +452,7 @@ $_corePrinciple
       final text = await _collect(
         _buildRequest(service,
             apiKey: apiKey,
-            system: _buildSimpleSystemPrompt(scene),
+            system: _buildSimpleSystemPrompt(scene, preset: preset),
             messages: [ChatMessage('user', '原始输入：$rawText\n\n$qa')]),
         cancelToken: cancelToken,
         onProgress: onProgress,
@@ -394,7 +465,8 @@ $_corePrinciple
         totalTokens: totalTokens,
       );
     }
-    final system = buildSystemPrompt(scene, OptimizeMode.deep);
+    final system =
+        buildSystemPrompt(scene, OptimizeMode.deep, preset: preset);
     final messages = [ChatMessage('user', '原始输入：$rawText\n\n$qa')];
     for (var attempt = 0; attempt < 2; attempt++) {
       final text = await _collect(

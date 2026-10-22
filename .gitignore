@@ -74,4 +74,5 @@ dist/
 android/key.properties
 **/*.jks
 **/*.keystore
-test/
+# 测试代码必须入库（CI 全量测试门禁依赖）；仅排除 golden 失败比对产物
+test/widget/failures/

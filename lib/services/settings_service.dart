@@ -123,7 +123,8 @@ class AppSettings {
             orElse: () => ProxyMode.system),
         proxyUrl: j['proxy_url'] as String? ?? '',
         timeoutSecs: (j['timeout_secs'] as num?)?.toInt() ?? 30,
-        parallelEnabled: j['parallel_enabled'] as bool? ?? false,
+        // 每次运行软件「并行对比」默认关闭：不沿用上次运行的开启状态
+        parallelEnabled: false,
         defaultServiceId: j['default_service_id'] as String? ?? '',
       );
 

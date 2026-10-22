@@ -61,6 +61,15 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
     if (mounted) _toast('已复制到剪贴板', severity: InfoBarSeverity.success);
   }
 
+  /// 并行对比：复制指定列（1/2）的优化结果
+  Future<void> _copyParallelResult(ParallelRunState st, int index) async {
+    await Clipboard.setData(
+        ClipboardData(text: st.runResult!.result.toPlainText()));
+    if (mounted) {
+      _toast('已复制结果$index 到剪贴板', severity: InfoBarSeverity.success);
+    }
+  }
+
   void _toast(String msg, {InfoBarSeverity severity = InfoBarSeverity.info}) {
     displayInfoBar(context, builder: (context, close) => InfoBar(
           title: Text(msg),
@@ -177,9 +186,16 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
             ? (v) async {
                 await appState.settings.update(
                     appState.settings.settings.copyWith(parallelEnabled: v));
-                if (!v && mounted) {
-                  setState(() => session.parallelServiceId = null);
-                }
+                if (!mounted) return;
+                setState(() {
+                  if (v) {
+                    // 开启后默认选中对比模型下拉框中的第一个（候选非空时）
+                    session.parallelServiceId =
+                        candidates.isNotEmpty ? candidates.first.id : null;
+                  } else {
+                    session.parallelServiceId = null;
+                  }
+                });
               }
             : null, // 仅 1 个可用模型时锁定为不可开启
         content: compact
@@ -219,6 +235,7 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
 
   // ---------------------------------------------------------------- 输入卡
   Widget _buildInputCard() {
+    final session = appState.session;
     final len = appState.session.rawText.trim().length;
     return Card(
       padding: EdgeInsets.zero,
@@ -238,6 +255,41 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
               ),
           ]),
         ),
+        // 编程预置词下拉：仅「AI 编程 / Bug 修复」场景展示（为优化提供技术背景）；
+        // 状态管理与本页其他会话表单控件一致（session + setState）
+        if (const ['ai_coding', 'bug_fix'].contains(session.sceneId))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(children: [
+              const Text('编程预置词',
+                  style: TextStyle(fontSize: 12.5, color: AppTokens.text2)),
+              const SizedBox(width: AppTokens.gapS),
+              Expanded(
+                child: ComboBox<String>(
+                  value: session.presetId ?? '',
+                  placeholder: const Text('（不使用）',
+                      style: TextStyle(fontSize: 12.5)),
+                  items: [
+                    // 默认空选项：允许不使用预置词（优化流程保持现状）
+                    const ComboBoxItem(
+                        value: '',
+                        child: Text('（不使用）', style: TextStyle(fontSize: 12.5))),
+                    for (final p in appState.presets)
+                      ComboBoxItem(
+                          value: p.id,
+                          child: Text(p.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12.5))),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) {
+                      setState(() => session.presetId = v.isEmpty ? null : v);
+                    }
+                  },
+                ),
+              ),
+            ]),
+          ),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -407,6 +459,10 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
                 if (v != null) setState(() => session.outputStyle = v);
               },
             );
+            final parallelEntries = session.parallelStates.entries.toList();
+            // 双复制按钮条件：并行对比开启 且 当前结果为并行双列产出
+            final showDualCopy = appState.settings.settings.parallelEnabled &&
+                parallelEntries.length >= 2;
             final buttonChildren = <Widget>[
               _buildReoptimizeButton(record),
               Button(
@@ -414,11 +470,23 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
                       ? null
                       : () => navigateTo(context, AppShellState.reviewEdit),
                   child: const Text('📝 复查编辑')),
-              FilledButton(
-                  onPressed: record == null || optimizing
-                      ? null
-                      : () => _copyResult(record.latest.result),
-                  child: const Text('📄 一键复制')),
+              // 并行对比结果（双列）：「一键复制」拆为「复制结果1/2」，
+              // 各复制对应列的优化结果（列序与双列展示一致）；
+              // 关闭并行对比后复原为单一「一键复制」。
+              if (showDualCopy)
+                for (var i = 0; i < 2 && i < parallelEntries.length; i++)
+                  FilledButton(
+                      onPressed: parallelEntries[i].value.success && !optimizing
+                          ? () => _copyParallelResult(
+                              parallelEntries[i].value, i + 1)
+                          : null,
+                      child: Text('复制结果${i + 1}'))
+              else
+                FilledButton(
+                    onPressed: record == null || optimizing
+                        ? null
+                        : () => _copyResult(record.latest.result),
+                    child: const Text('📄 一键复制')),
             ];
             // 紧凑窄屏：上下两行，按钮组 Wrap 右对齐（超宽自动换行防溢出）
             if (narrow) {

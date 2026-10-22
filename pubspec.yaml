@@ -1,7 +1,7 @@
 name: prompt_optimizer
 description: 跨平台提示词优化工具（Windows / Linux / Android），聚合国内主流大模型。
 publish_to: "none"
-version: 1.0.0+2
+version: 1.0.1+1
 
 environment:
   sdk: ^3.5.0

@@ -33,7 +33,8 @@ class SqliteStorage implements AppStorage {
       CREATE TABLE IF NOT EXISTS services(
         id TEXT PRIMARY KEY,
         json TEXT NOT NULL,
-        created_at INTEGER NOT NULL DEFAULT 0
+        created_at INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS records(
         id TEXT PRIMARY KEY,
@@ -45,11 +46,21 @@ class SqliteStorage implements AppStorage {
         id TEXT PRIMARY KEY,
         json TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS presets(
+        id TEXT PRIMARY KEY,
+        json TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT 0
+      );
       CREATE TABLE IF NOT EXISTS settings(
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
     ''');
+    // 旧库升级：services 增加拖动排序列（已存在则忽略）
+    try {
+      _db.execute(
+          'ALTER TABLE services ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+    } catch (_) {/* 列已存在 */}
   }
 
   Map<String, dynamic> _decode(String json) {
@@ -63,31 +74,69 @@ class SqliteStorage implements AppStorage {
   // ---------------- 服务配置 ----------------
   @override
   Future<List<ServiceConfig>> loadServices() async {
-    final rows = _db.select('SELECT json FROM services ORDER BY created_at ASC, rowid ASC');
+    // 拖动排序优先（sort_order），旧数据全 0 时按创建顺序稳定回落
+    final rows = _db.select(
+        'SELECT json FROM services ORDER BY sort_order ASC, created_at ASC, rowid ASC');
     return [for (final r in rows) ServiceConfig.fromJson(_decode(r['json'] as String))];
   }
+
+  /// UPSERT：已存在仅更新 json（保留 sort_order/created_at），
+  /// 新增排到末尾（sort_order = MAX+1）
+  static const _upsertService = '''
+    INSERT INTO services(id, json, created_at, sort_order)
+    VALUES(?,?,?,COALESCE(
+      (SELECT sort_order FROM services WHERE id=?),
+      (SELECT COALESCE(MAX(sort_order),-1)+1 FROM services),
+      0))
+    ON CONFLICT(id) DO UPDATE SET json=excluded.json
+  ''';
 
   @override
   Future<void> saveService(ServiceConfig service) async {
     if (service.isDefault) {
       // 保证默认唯一：读出全部 → 清标记 → 逐个回写
       final all = await loadServices();
-      final stmt = _db.prepare(
-          'INSERT OR REPLACE INTO services(id, json, created_at) VALUES(?,?,?)');
+      final stmt = _db.prepare(_upsertService);
       try {
         for (final s in all) {
           if (s.id != service.id && s.isDefault) {
             final cleared = s.copyWith(isDefault: false);
-            stmt.execute([cleared.id, jsonEncode(cleared.toJson()), cleared.createdAt]);
+            stmt.execute([
+              cleared.id,
+              jsonEncode(cleared.toJson()),
+              cleared.createdAt,
+              cleared.id,
+            ]);
           }
         }
-        stmt.execute([service.id, jsonEncode(service.toJson()), service.createdAt]);
+        stmt.execute([
+          service.id,
+          jsonEncode(service.toJson()),
+          service.createdAt,
+          service.id,
+        ]);
       } finally {
         stmt.dispose();
       }
     } else {
-      _db.execute('INSERT OR REPLACE INTO services(id, json, created_at) VALUES(?,?,?)',
-          [service.id, jsonEncode(service.toJson()), service.createdAt]);
+      _db.execute(_upsertService, [
+        service.id,
+        jsonEncode(service.toJson()),
+        service.createdAt,
+        service.id,
+      ]);
+    }
+  }
+
+  @override
+  Future<void> reorderServices(List<String> orderedIds) async {
+    final stmt = _db.prepare('UPDATE services SET sort_order=? WHERE id=?');
+    try {
+      for (var i = 0; i < orderedIds.length; i++) {
+        stmt.execute([i, orderedIds[i]]);
+      }
+    } finally {
+      stmt.dispose();
     }
   }
 
@@ -180,6 +229,27 @@ class SqliteStorage implements AppStorage {
   @override
   Future<void> deleteTemplate(String id) async {
     _db.execute('DELETE FROM templates WHERE id=?', [id]);
+  }
+
+  // ---------------- 编程预置词 ----------------
+  @override
+  Future<List<CodingPreset>> loadPresets() async {
+    final rows =
+        _db.select('SELECT json FROM presets ORDER BY created_at DESC, rowid DESC');
+    return [for (final r in rows) CodingPreset.fromJson(_decode(r['json'] as String))];
+  }
+
+  @override
+  Future<void> savePreset(CodingPreset preset) async {
+    // 后端校验：名称必填/唯一、内容长度上限（编辑时排除自身）
+    validatePreset(preset, await loadPresets(), selfId: preset.id);
+    _db.execute('INSERT OR REPLACE INTO presets(id, json, created_at) VALUES(?,?,?)',
+        [preset.id, jsonEncode(preset.toJson()), preset.createdAt]);
+  }
+
+  @override
+  Future<void> deletePreset(String id) async {
+    _db.execute('DELETE FROM presets WHERE id=?', [id]);
   }
 
   // ---------------- 设置项 ----------------

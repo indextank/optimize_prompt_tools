@@ -115,14 +115,16 @@ void main() {
       await pumpBench(tester);
       // 默认（关）：无下拉
       expect(find.text('k3'), findsNothing);
-      // 开启
+      // 开启：默认选中下拉中的第一个模型（k3），不再停留在空选项
       await tester.tap(find.text('并行对比'));
       await tester.pumpAndSettle();
-      expect(find.text('选择对比模型'), findsOneWidget);
+      expect(find.text('k3'), findsOneWidget, reason: '开启后默认选中第一个模型');
+      expect(appState.session.parallelServiceId, 'b');
+      expect(find.text('选择对比模型'), findsNothing);
       // 关闭：下拉隐藏
       await tester.tap(find.text('并行对比'));
       await tester.pumpAndSettle();
-      expect(find.text('选择对比模型'), findsNothing);
+      expect(find.text('k3'), findsNothing);
       expect(appState.session.parallelServiceId, isNull, reason: '关闭开关应清空对比选择');
     });
 

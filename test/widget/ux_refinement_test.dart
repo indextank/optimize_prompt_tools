@@ -61,7 +61,7 @@ void main() {
   });
 
   group('① 并行对比开关（工作台）设置持久化', () {
-    testWidgets('开启/关闭均持久化 parallelEnabled', (tester) async {
+    testWidgets('运行时开关联动；重载（模拟重启）后默认关闭', (tester) async {
       await appState.saveService(testService(), apiKey: 'sk');
       await appState.saveService(
           testService(id: 'svc-2', provider: 'kimi', model: 'k3', isDefault: false),
@@ -72,7 +72,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(appState.settings.settings.parallelEnabled, isTrue);
       final reloaded = await SettingsService.load(appState.storage);
-      expect(reloaded.settings.parallelEnabled, isTrue, reason: '开启状态应持久化');
+      // 新语义（覆盖旧持久化行为）：每次运行软件默认关闭，不沿用上次开启状态
+      expect(reloaded.settings.parallelEnabled, isFalse,
+          reason: '重新加载（模拟重启）默认关闭，不沿用上次开启状态');
       await tester.tap(find.text('并行对比'));
       await tester.pumpAndSettle();
       expect(appState.settings.settings.parallelEnabled, isFalse);

@@ -119,10 +119,14 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
     try {
-      // 纯解析校验：失败抛异常（未触碰存储）；成功返回合并后的新配置
+      // 纯解析校验（settings + 预置词均通过前不写任何数据）
       final merged = appState.parseImportedSettings(text);
+      final presets = appState.parseImportedPresets(text);
       await appState.settings.update(merged);
-      _configToast('配置导入成功，已应用');
+      final presetCount = await appState.importPresets(presets);
+      _configToast(presetCount > 0
+          ? '配置导入成功，已应用（含编程预置词 $presetCount 条）'
+          : '配置导入成功，已应用');
     } on FormatException catch (e) {
       _configToast('$failPrefix${e.message}', ok: false);
     } catch (e) {

@@ -9,6 +9,7 @@ import '../services/update_service.dart';
 import '../state/app_state.dart';
 import 'ui/pages/history_page.dart';
 import 'ui/pages/model_config_page.dart';
+import 'ui/pages/preset_page.dart';
 import 'ui/pages/review_edit_page.dart';
 import 'ui/pages/settings_page.dart';
 import 'ui/pages/workbench_page.dart';
@@ -50,14 +51,14 @@ class AppShell extends StatefulWidget {
 }
 
 class AppShellState extends State<AppShell> {
-  // 支持 URL 深链直达页面（如 ?page=3 打开设置），默认工作台
+  // 支持 URL 深链直达页面（如 ?page=4 打开设置），默认工作台
   int _index = _initialIndex();
 
   static int _initialIndex() {
     try {
       final p = Uri.base.queryParameters['page'];
       final v = int.tryParse(p ?? '');
-      if (v != null && v >= 0 && v <= 4) return v;
+      if (v != null && v >= 0 && v <= 5) return v;
     } catch (_) {}
     return 0;
   }
@@ -68,13 +69,15 @@ class AppShellState extends State<AppShell> {
   static const int workbench = 0;
   static const int history = 1;
   static const int modelConfig = 2;
-  static const int settings = 3;
-  static const int reviewEdit = 4;
+  static const int presets = 3;
+  static const int settings = 4;
+  static const int reviewEdit = 5;
 
   static const _navItems = [
     (FluentIcons.lightning_bolt, '优化工作台'),
     (FluentIcons.history, '历史记录'),
     (FluentIcons.robot, 'AI 模型配置'),
+    (FluentIcons.library, '编程预置词'),
     (FluentIcons.settings, '系统设置'),
   ];
 
@@ -88,8 +91,9 @@ class AppShellState extends State<AppShell> {
       child: switch (_index) {
         1 => const HistoryPage(),
         2 => const ModelConfigPage(),
-        3 => const SettingsPage(),
-        4 => const ReviewEditPage(),
+        3 => const PresetPage(),
+        4 => const SettingsPage(),
+        5 => const ReviewEditPage(),
         _ => const WorkbenchPage(),
       },
     );
