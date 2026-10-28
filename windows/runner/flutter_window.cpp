@@ -28,6 +28,22 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
+    // 首帧渲染完成后再居中并显示：窗口此时尚未 Show，不会出现左上角闪烁。
+    // 以主显示器工作区（含任务栏）为基准，保证不越出可视区域。
+    HWND hwnd = this->GetHandle();
+    if (hwnd == nullptr) return;
+    RECT work_area{};
+    ::SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
+    RECT window_rect{};
+    ::GetWindowRect(hwnd, &window_rect);
+    const int width = window_rect.right - window_rect.left;
+    const int height = window_rect.bottom - window_rect.top;
+    int x = work_area.left + ((work_area.right - work_area.left) - width) / 2;
+    int y = work_area.top + ((work_area.bottom - work_area.top) - height) / 2;
+    if (x < work_area.left) x = work_area.left;
+    if (y < work_area.top) y = work_area.top;
+    ::SetWindowPos(hwnd, nullptr, x, y, 0, 0,
+                   SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     this->Show();
   });
 

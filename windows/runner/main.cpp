@@ -25,7 +25,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
-  Win32Window::Point origin(10, 10);
+  // 初始 (0,0) 仅为占位：窗口在首帧前由 FlutterWindow 居中到主显示器工作区后再 Show。
+  Win32Window::Point origin(0, 0);
   Win32Window::Size size(1280, 720);
   if (!window.Create(L"\u63D0\u793A\u8BCD\u4F18\u5316\u5DE5\u5177", origin, size)) {
     return EXIT_FAILURE;

@@ -102,6 +102,8 @@ static void my_application_activate(GApplication* application) {
   }
 
   gtk_window_set_default_size(window, 1280, 720);
+  // 默认在屏幕居中（多显示器时由 WM 选择目标输出后居中，不越出可视区域）
+  gtk_window_set_position(window, GTK_WIN_POS_CENTER);
   my_application_set_window_icon(window);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();

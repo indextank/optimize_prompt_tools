@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:prompt_optimizer/services/storage/storage_factory_native.dart';
 
 void main() {
@@ -13,7 +14,11 @@ void main() {
         platform: 'linux',
         linuxConfigHome: '/home/user/.config',
       );
-      expect(path, '/home/user/.config/prompt_optimizer/prompt_optimizer.db');
+      // 分隔符由宿主 p.join 决定（Windows 宿主为 \），断言语义而非字面符
+      expect(
+        path,
+        p.join('/home/user/.config', 'prompt_optimizer', 'prompt_optimizer.db'),
+      );
       // 必须是 .config 而非 .local/share（getApplicationSupportDirectory 的默认行为）
       expect(path, isNot(contains('.local/share')));
     });
@@ -23,7 +28,10 @@ void main() {
         platform: 'linux',
         linuxConfigHome: '/custom/cfg',
       );
-      expect(path, '/custom/cfg/prompt_optimizer/prompt_optimizer.db');
+      expect(
+        path,
+        p.join('/custom/cfg', 'prompt_optimizer', 'prompt_optimizer.db'),
+      );
     });
 
     test('Windows：%APPDATA%（RoamingAppData）子目录', () {
@@ -40,8 +48,13 @@ void main() {
         platform: 'macos',
         supportDir: '/Users/me/Library/Application Support/prompt_optimizer',
       );
-      expect(path,
-          '/Users/me/Library/Application Support/prompt_optimizer/prompt_optimizer.db');
+      expect(
+        path,
+        p.join(
+          '/Users/me/Library/Application Support/prompt_optimizer',
+          'prompt_optimizer.db',
+        ),
+      );
     });
   });
 

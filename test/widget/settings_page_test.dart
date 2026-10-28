@@ -164,6 +164,9 @@ void main() {
     // 设置页底部不再展示版本信息模块
     expect(find.text('提示词优化工具 Prompt Optimizer'), findsNothing);
     expect(find.text('检查更新'), findsNothing);
+    // 「界面语言」设置项已移除（当前仅支持中文）
+    expect(find.text('界面语言'), findsNothing);
+    expect(find.text('当前版本提供简体中文'), findsNothing);
   });
 
   testWidgets('主题切换持久化', (tester) async {
@@ -205,6 +208,88 @@ void main() {
     // 推进到自动关闭，避免遗留 Timer
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('自定义代理地址可正常键入、粘贴并实时写入配置', (tester) async {
+    await pumpPage(tester);
+    await tester.tap(find.byType(ComboBox<ProxyMode>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('自定义').last);
+    await tester.pumpAndSettle();
+
+    final field = find.byKey(const Key('proxy-url-field'));
+    // 逐段输入模拟键入过程（中间态不被拦截）
+    await tester.enterText(field, 'http');
+    await tester.pump();
+    expect(appState.settings.settings.proxyUrl, 'http');
+    await tester.enterText(field, 'http://127.0.0.1:7890');
+    await tester.pump();
+    expect(appState.settings.settings.proxyUrl, 'http://127.0.0.1:7890');
+    // 输入框内容与配置一致，未被 rebuild 重置
+    expect(tester.widget<TextBox>(field).controller!.text, 'http://127.0.0.1:7890');
+    // 持久化回环
+    final reloaded = await SettingsService.load(appState.storage);
+    expect(reloaded.settings.proxyUrl, 'http://127.0.0.1:7890');
+  });
+
+  testWidgets('跟随系统/直连模式下立即检测不报「尚未配置服务商」', (tester) async {
+    final probeCalls = <String?>[];
+    AppState.debugNetworkProbe = (proxyUrl, timeout) async {
+      probeCalls.add(proxyUrl);
+      return (true, proxyUrl == null ? '跟随系统' : (proxyUrl.isEmpty ? '直连' : proxyUrl));
+    };
+    addTearDown(() => AppState.debugNetworkProbe = null);
+
+    await pumpPage(tester);
+
+    // 默认跟随系统
+    await tester.tap(find.text('📶 立即检测'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('尚未配置服务商'), findsNothing);
+    expect(find.text('✅ 网络连接正常'), findsOneWidget);
+    expect(probeCalls.last, isNull);
+
+    // 切换为直连
+    await tester.tap(find.byType(ComboBox<ProxyMode>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('直连').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('📶 立即检测'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('尚未配置服务商'), findsNothing);
+    expect(find.text('✅ 网络连接正常'), findsOneWidget);
+    expect(probeCalls.last, '');
+  });
+
+  testWidgets('自定义模式缺少代理地址时检测报「尚未配置服务商」，配置后走自定义代理', (tester) async {
+    final probeCalls = <String?>[];
+    AppState.debugNetworkProbe = (proxyUrl, timeout) async {
+      probeCalls.add(proxyUrl);
+      return (true, proxyUrl ?? '跟随系统');
+    };
+    addTearDown(() => AppState.debugNetworkProbe = null);
+
+    await pumpPage(tester);
+    await tester.tap(find.byType(ComboBox<ProxyMode>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('自定义').last);
+    await tester.pumpAndSettle();
+
+    // 缺少地址：报尚未配置服务商，且不发起探测
+    await tester.tap(find.text('📶 立即检测'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('尚未配置服务商'), findsOneWidget);
+    expect(probeCalls, isEmpty);
+
+    // 填入合法地址后检测走自定义代理
+    await tester.enterText(
+        find.byKey(const Key('proxy-url-field')), 'http://127.0.0.1:7890');
+    await tester.pump();
+    await tester.tap(find.text('📶 立即检测'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('尚未配置服务商'), findsNothing);
+    expect(find.text('✅ 网络连接正常'), findsOneWidget);
+    expect(probeCalls.last, 'http://127.0.0.1:7890');
   });
 
   testWidgets('清空历史需二次确认', (tester) async {

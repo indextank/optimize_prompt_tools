@@ -28,12 +28,35 @@ class _SettingsPageState extends State<SettingsPage> {
   FileSaver get _fileSaver => SettingsPage.debugFileSaver ?? createFileSaver();
   bool _checkingNet = false;
   String _netStatus = '';
+  bool _netOk = true;
   int _historyCount = 0;
+
+  /// 自定义代理地址输入框：State 持有稳定 controller，
+  /// 避免每次 rebuild 新建导致输入被重置/光标丢失。
+  late final TextEditingController _proxyUrlCtrl;
 
   @override
   void initState() {
     super.initState();
+    _proxyUrlCtrl =
+        TextEditingController(text: appState.settings.settings.proxyUrl);
+    appState.settings.addListener(_syncProxyUrlFromSettings);
     _loadStats();
+  }
+
+  @override
+  void dispose() {
+    appState.settings.removeListener(_syncProxyUrlFromSettings);
+    _proxyUrlCtrl.dispose();
+    super.dispose();
+  }
+
+  /// 外部变更（导入配置 / 恢复默认等）时回写输入框，保持与配置一致。
+  void _syncProxyUrlFromSettings() {
+    final current = appState.settings.settings.proxyUrl;
+    if (_proxyUrlCtrl.text != current) {
+      _proxyUrlCtrl.text = current;
+    }
   }
 
   Future<void> _loadStats() async {
@@ -55,19 +78,22 @@ class _SettingsPageState extends State<SettingsPage> {
       _checkingNet = true;
       _netStatus = '';
     });
-    var ok = 0;
-    for (final svc in appState.services) {
-      final key = await appState.readApiKey(svc) ?? '';
-      final res = await appState.testConnection(svc, key);
-      if (res.success) ok++;
+    try {
+      final status = await appState.runConnectivityCheck();
+      if (!mounted) return;
+      setState(() {
+        _checkingNet = false;
+        _netStatus = status;
+        _netOk = status.startsWith('✅');
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _checkingNet = false;
+        _netStatus = '检测失败：$e';
+        _netOk = false;
+      });
     }
-    if (!mounted) return;
-    setState(() {
-      _checkingNet = false;
-      _netStatus = appState.services.isEmpty
-          ? '尚未配置服务商'
-          : '✓ $ok/${appState.services.length} 家可达';
-    });
   }
 
   void _configToast(String msg, {bool ok = true}) {
@@ -210,14 +236,6 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
               onChanged: (v) => _update((c) => c.copyWith(themeMode: v)),
             )),
-        _row('界面语言', '当前版本提供简体中文',
-            ComboBox<String>(
-              value: s.language,
-              items: const [
-                ComboBoxItem(value: 'zh_CN', child: Text('简体中文')),
-              ],
-              onChanged: (v) => _update((c) => c.copyWith(language: v)),
-            )),
         _row('开机自动启动', '最小化到系统托盘，不打扰桌面（桌面端生效）',
             ToggleSwitch(
               key: const Key('toggle-autoStart'),
@@ -302,7 +320,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 ComboBoxItem(value: ProxyMode.direct, child: Text('直连')),
                 ComboBoxItem(value: ProxyMode.custom, child: Text('自定义')),
               ],
-              onChanged: (v) => _update((c) => c.copyWith(proxyMode: v)),
+              onChanged: (v) {
+                // 切换模式后上一次检测结果不再对应当前模式，直接清空
+                setState(() {
+                  _netStatus = '';
+                  _netOk = true;
+                });
+                _update((c) => c.copyWith(proxyMode: v));
+              },
             )),
         if (s.proxyMode == ProxyMode.custom)
           _row(
@@ -313,7 +338,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: TextBox(
                   key: const Key('proxy-url-field'),
                   placeholder: 'http://127.0.0.1:7890',
-                  controller: TextEditingController(text: s.proxyUrl),
+                  controller: _proxyUrlCtrl,
                   onChanged: (t) => _update((c) => c.copyWith(proxyUrl: t)),
                 ),
               )),
@@ -330,24 +355,38 @@ class _SettingsPageState extends State<SettingsPage> {
             )),
         _row(
             '连通性检测',
-            '批量检测已配置服务商可达性',
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              Button(
-                onPressed: _checkingNet ? null : _checkNetwork,
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (_checkingNet)
-                    const SizedBox(
-                        width: 12, height: 12, child: ProgressRing(strokeWidth: 2)),
-                  const SizedBox(width: 4),
-                  const Text('📶 立即检测'),
-                ]),
+            '',
+            // 固定宽度 + 右对齐：与右侧控件对齐；结果出现时不改变列宽，避免按钮漂移
+            SizedBox(
+              width: 220,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Button(
+                    onPressed: _checkingNet ? null : _checkNetwork,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (_checkingNet)
+                        const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: ProgressRing(strokeWidth: 2)),
+                      const SizedBox(width: 4),
+                      const Text('📶 立即检测'),
+                    ]),
+                  ),
+                  if (_netStatus.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _netStatus,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          color: _netOk ? AppTokens.success : AppTokens.danger),
+                    ),
+                  ],
+                ],
               ),
-              if (_netStatus.isNotEmpty) ...[
-                const SizedBox(width: 10),
-                Text(_netStatus,
-                    style: const TextStyle(fontSize: 11.5, color: AppTokens.success)),
-              ],
-            ])),
+            )),
       ]);
 
   // ---------------------------------------------------------------- 数据管理
@@ -395,8 +434,10 @@ class _SettingsPageState extends State<SettingsPage> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(label, style: const TextStyle(fontSize: 12.8, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 2),
-              Text(desc, style: const TextStyle(fontSize: 11, color: AppTokens.text3)),
+              if (desc.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(desc, style: const TextStyle(fontSize: 11, color: AppTokens.text3)),
+              ],
             ]),
           ),
           const SizedBox(width: 12),

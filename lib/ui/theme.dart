@@ -2,6 +2,38 @@
 library;
 
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+
+/// 按平台解析优先中文字体族。
+///
+/// 此前将逗号分隔的回退链写入 `fontFamily`，会被当成单个无效族名，
+/// 回退到不含中文字形的默认字体导致合成渲染发虚。
+String resolveCjkFontFamily() {
+  if (kIsWeb) return 'PingFang SC';
+  switch (defaultTargetPlatform) {
+    case TargetPlatform.windows:
+      return 'Microsoft YaHei UI';
+    case TargetPlatform.macOS:
+      return 'PingFang SC';
+    case TargetPlatform.linux:
+      return 'Noto Sans CJK SC';
+    default:
+      return 'Microsoft YaHei UI';
+  }
+}
+
+FluentThemeData buildFluentTheme(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  return FluentThemeData(
+    brightness: brightness,
+    accentColor: Colors.teal,
+    scaffoldBackgroundColor: dark ? const Color(0xFF202020) : AppTokens.pageBg,
+    cardColor: dark ? const Color(0xFF2B2B2B) : AppTokens.cardBg,
+    // 单一合法族名；Linux 缺 Noto 时由系统回退到思源黑体等已装 CJK 字体
+    fontFamily: resolveCjkFontFamily(),
+  );
+}
 
 /// 设计令牌
 abstract final class AppTokens {
@@ -48,15 +80,4 @@ abstract final class AppTokens {
 
   /// 紧凑布局断点（窄于此宽度走移动端布局）
   static const double compactBreakpoint = 720;
-}
-
-FluentThemeData buildFluentTheme(Brightness brightness) {
-  final dark = brightness == Brightness.dark;
-  return FluentThemeData(
-    brightness: brightness,
-    accentColor: Colors.teal,
-    scaffoldBackgroundColor: dark ? const Color(0xFF202020) : AppTokens.pageBg,
-    cardColor: dark ? const Color(0xFF2B2B2B) : AppTokens.cardBg,
-    fontFamily: 'Microsoft YaHei UI, PingFang SC, Noto Sans CJK SC, sans-serif',
-  );
 }

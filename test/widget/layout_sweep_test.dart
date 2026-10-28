@@ -19,17 +19,23 @@ import 'package:prompt_optimizer/ui/pages/review_edit_page.dart';
 import 'package:prompt_optimizer/ui/pages/settings_page.dart';
 import 'package:prompt_optimizer/ui/pages/workbench_page.dart';
 
+import '../cjk_font_helper.dart';
 import '../fakes.dart';
 
 void main() {
+  final fontPath = findHostCjkFontPath();
+  if (fontPath == null) {
+    testWidgets('视觉套件跳过：宿主无可用 CJK 字体', (tester) async {},
+        skip: true);
+    return;
+  }
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late FakeLlmClient llm;
 
   setUpAll(() async {
-    final bytes =
-        await File('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc')
-            .readAsBytes();
+    final bytes = await File(fontPath!).readAsBytes();
     final loader = FontLoader('NotoCJK')
       ..addFont(Future.value(ByteData.sublistView(bytes)));
     await loader.load();

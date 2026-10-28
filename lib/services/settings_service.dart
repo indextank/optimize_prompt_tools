@@ -134,7 +134,11 @@ class AppSettings {
     if (retentionDays < 0 || retentionDays > 3650) return '历史保留天数需在 0-3650 之间';
     if (proxyMode == ProxyMode.custom && proxyUrl.trim().isNotEmpty) {
       final u = proxyUrl.trim();
-      if (!u.startsWith('http://') && !u.startsWith('https://') && !u.startsWith('socks5://')) {
+      // 仅在已出现协议分隔符时校验前缀，避免逐字键入过程中被中间态误拦截。
+      if (u.contains('://') &&
+          !u.startsWith('http://') &&
+          !u.startsWith('https://') &&
+          !u.startsWith('socks5://')) {
         return '代理地址需以 http:// 、https:// 或 socks5:// 开头';
       }
     }

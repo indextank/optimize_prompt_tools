@@ -15,6 +15,7 @@ import '../core/errors.dart';
 import '../core/models.dart';
 import '../services/key_store.dart';
 import '../services/llm_client.dart';
+import '../services/network_probe.dart';
 import '../services/optimize_engine.dart';
 import '../services/parallel_scheduler.dart';
 import '../services/settings_service.dart';
@@ -273,6 +274,75 @@ class AppState extends ChangeNotifier {
       messages: const [ChatMessage('user', 'ping')],
       timeout: Duration(seconds: settings.settings.timeoutSecs),
     ));
+  }
+
+  /// 网络探测（测试可注入）：返回是否连通，并回传实际使用的代理描述。
+  @visibleForTesting
+  static Future<(bool ok, String proxyLabel)> Function(
+      String? proxyUrl, Duration timeout)? debugNetworkProbe;
+
+  /// 按当前代理模式执行连通性检测，返回展示文案。
+  ///
+  /// - 跟随系统 / 直连：直接探测网络，不校验服务商配置
+  /// - 自定义：先校验代理地址，探测时走该代理
+  /// - 成功/失败文案固定为「✅ 网络连接正常」/「❌ 网络连接失败」
+  Future<String> runConnectivityCheck() async {
+    final s = settings.settings;
+    final timeout = Duration(seconds: s.timeoutSecs);
+    String? proxyUrl;
+    switch (s.proxyMode) {
+      case ProxyMode.system:
+        proxyUrl = null; // 跟随系统代理
+        break;
+      case ProxyMode.direct:
+        proxyUrl = ''; // 强制直连
+        break;
+      case ProxyMode.custom:
+        final url = s.proxyUrl.trim();
+        if (url.isEmpty) {
+          // 仅自定义模式且缺失必要配置时报此错
+          return '尚未配置服务商';
+        }
+        proxyUrl = url;
+        break;
+    }
+
+    final (netOk, _) = await _probeNetwork(proxyUrl, timeout);
+    return netOk ? '✅ 网络连接正常' : '❌ 网络连接失败';
+  }
+
+  Future<(bool ok, String proxyLabel)> _probeNetwork(
+      String? proxyUrl, Duration timeout) async {
+    if (debugNetworkProbe != null) {
+      return debugNetworkProbe!(proxyUrl, timeout);
+    }
+    final label = switch ((settings.settings.proxyMode, proxyUrl)) {
+      (ProxyMode.system, _) => '跟随系统',
+      (ProxyMode.direct, _) => '直连',
+      (ProxyMode.custom, final u?) => u,
+      _ => '跟随系统',
+    };
+    // 解析代理规则：null=跟随系统，DIRECT=直连，PROXY/SOCKS5=自定义
+    String? proxyRule;
+    if (proxyUrl != null && proxyUrl.isNotEmpty) {
+      final uri = Uri.tryParse(proxyUrl);
+      if (uri == null || uri.host.isEmpty) return (false, label);
+      final scheme = uri.scheme.toLowerCase();
+      final port = uri.hasPort
+          ? uri.port
+          : (scheme == 'socks5' ? 1080 : (scheme == 'https' ? 443 : 80));
+      final hostPort = '${uri.host}:$port';
+      proxyRule = scheme == 'socks5' ? 'SOCKS5 $hostPort' : 'PROXY $hostPort';
+    } else if (proxyUrl != null && proxyUrl.isEmpty) {
+      proxyRule = 'DIRECT';
+    }
+    // 任意可公网访问的轻量端点；仅验证经当前代理路径的连通性
+    final ok = await probeThroughProxy(
+      proxyRule: proxyRule,
+      url: Uri.parse('http://www.baidu.com/'),
+      timeout: timeout,
+    );
+    return (ok, label);
   }
 
   /// 在线拉取模型列表

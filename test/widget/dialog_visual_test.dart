@@ -10,16 +10,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:prompt_optimizer/state/app_state.dart';
 import 'package:prompt_optimizer/ui/pages/add_service_dialog.dart';
 
+import '../cjk_font_helper.dart';
 import '../fakes.dart';
 
 void main() {
+  final fontPath = findHostCjkFontPath();
+  if (fontPath == null) {
+    testWidgets('视觉套件跳过：宿主无可用 CJK 字体', (tester) async {},
+        skip: true);
+    return;
+  }
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // 加载真实 CJK 字体（测试默认 Ahem 字体会把文字渲染成黑条）
   setUpAll(() async {
-    final bytes =
-        await File('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc')
-            .readAsBytes();
+    final bytes = await File(fontPath!).readAsBytes();
     final loader = FontLoader('NotoCJK')
       ..addFont(Future.value(ByteData.sublistView(bytes)));
     await loader.load();
