@@ -108,6 +108,66 @@ void main() {
     });
   });
 
+  group('优化请求中的并行控制', () {
+    testWidgets('并行开启时禁用开关和对比模型下拉，完成后恢复', (tester) async {
+      await addService('a');
+      await addService('b', provider: 'kimi', model: 'k3');
+      await appState.settings.update(
+          appState.settings.settings.copyWith(parallelEnabled: true));
+      appState.session.parallelServiceId = 'b';
+      appState.session.rawText = '原文';
+      llm.enqueueText(kValidContractJson);
+      llm.enqueueText(kValidContractJson);
+      await pumpBench(tester);
+      llm.chunkDelay = const Duration(milliseconds: 1);
+
+      late final Future<Object?> future;
+      await tester.runAsync(() async {
+        future = appState.startOptimize();
+      });
+      await tester.pump();
+
+      expect(appState.session.optimizing, isTrue);
+      expect(parallelToggle(tester).onChanged, isNull);
+      final comboFinder = find.widgetWithText(ComboBox<String>, 'k3');
+      final combo = tester.widget<ComboBox<String>>(comboFinder);
+      expect(combo.onChanged, isNull);
+      expect(parallelToggle(tester).checked, isTrue);
+      expect(combo.value, 'b');
+
+      await tester.runAsync(() => future);
+      await tester.pumpAndSettle();
+
+      expect(appState.session.optimizing, isFalse);
+      expect(parallelToggle(tester).onChanged, isNotNull);
+      expect(tester.widget<ComboBox<String>>(comboFinder).onChanged, isNotNull);
+    });
+
+    testWidgets('单模型优化时也禁用并行开关，完成后恢复', (tester) async {
+      await addService('a');
+      await addService('b', provider: 'kimi', model: 'k3');
+      appState.session.rawText = '原文';
+      llm.enqueueText(kValidContractJson);
+      await pumpBench(tester);
+      llm.chunkDelay = const Duration(milliseconds: 1);
+
+      late final Future<Object?> future;
+      await tester.runAsync(() async {
+        future = appState.startOptimize();
+      });
+      await tester.pump();
+
+      expect(appState.session.optimizing, isTrue);
+      expect(parallelToggle(tester).onChanged, isNull);
+
+      await tester.runAsync(() => future);
+      await tester.pumpAndSettle();
+
+      expect(appState.session.optimizing, isFalse);
+      expect(parallelToggle(tester).onChanged, isNotNull);
+    });
+  });
+
   group('下拉框显隐与选项规则', () {
     testWidgets('默认仅展示开关，开启后实时展示下拉，关闭后自动隐藏', (tester) async {
       await addService('a');

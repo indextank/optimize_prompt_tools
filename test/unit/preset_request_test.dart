@@ -91,6 +91,32 @@ void main() {
       expect(bg, contains('Flutter'));
       expect(bg, contains('严禁'));
     });
+
+    test('预置词仅作内部指导，其内容或近似改写不得进入最终优化结果', () {
+      final bg = OptimizeEngine.buildTechBackground(presetOf())!;
+
+      expect(bg, contains('仅作为 AI 理解和优化原始提示词时的指导依据'));
+      for (final forbiddenLeak in [
+        '文字',
+        '字段',
+        '标签',
+        '示例',
+        '规则',
+        '预设内容',
+        '近似改写',
+        '直接输出',
+        '复述',
+        '引用',
+        '拼接',
+        '展开',
+        '纳入最终优化结果',
+      ]) {
+        expect(bg, contains(forbiddenLeak));
+      }
+      expect(bg, contains('最终优化结果中的提示词正文只呈现优化后的提示词本身'));
+      expect(bg, contains('完整保留原始提示词的目标、意图和适用范围'));
+      expect(bg, contains('不改变当前模式既定的输出契约'));
+    });
   });
 
   group('端到端：startOptimize 后 AI 收到的请求', () {

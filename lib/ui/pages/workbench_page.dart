@@ -172,6 +172,7 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
     final session = appState.session;
     final parallelOn = appState.settings.settings.parallelEnabled;
     final canParallel = appState.canEnableParallel;
+    final optimizing = session.optimizing;
     final eff = appState.effectiveService;
     final candidates = [for (final sv in appState.services) if (sv.id != eff?.id) sv];
     final compact = MediaQuery.of(context).size.width < AppTokens.compactBreakpoint;
@@ -182,7 +183,7 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
             style: TextStyle(fontSize: 11, color: AppTokens.warning)),
       ToggleSwitch(
         checked: canParallel && parallelOn,
-        onChanged: canParallel
+        onChanged: canParallel && !optimizing
             ? (v) async {
                 await appState.settings.update(
                     appState.settings.settings.copyWith(parallelEnabled: v));
@@ -197,7 +198,7 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
                   }
                 });
               }
-            : null, // 仅 1 个可用模型时锁定为不可开启
+            : null, // 服务不足或优化请求进行中时锁定
         content: compact
             ? null
             : const Text('并行对比', style: TextStyle(fontSize: 12.5)),
@@ -220,11 +221,13 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
                   value: sv.id,
                   child: Text(sv.model, style: const TextStyle(fontSize: 12.5))),
           ],
-          onChanged: (v) {
-            if (v != null && v.isNotEmpty) {
-              setState(() => session.parallelServiceId = v);
-            }
-          },
+          onChanged: optimizing
+              ? null
+              : (v) {
+                  if (v != null && v.isNotEmpty) {
+                    setState(() => session.parallelServiceId = v);
+                  }
+                },
         ),
       // 已开启但未选择对比模型时的生效提示
       if (canParallel && parallelOn && appState.parallelCandidateCount < 2)
