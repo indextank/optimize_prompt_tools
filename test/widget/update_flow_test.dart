@@ -122,11 +122,13 @@ void main() {
   });
 
   group('版本展示（读自 pubspec 构建元数据）', () {
-    testWidgets('展示 v<version> · Build <buildNumber> 与检查更新按钮',
+    testWidgets('展示 v<version> 与检查更新按钮（不再显示 Build 号）',
         (tester) async {
       await _pumpApp(tester);
-      expect(find.text('v1.0.0 · Build 1'), findsOneWidget);
+      expect(find.text('v1.0.0'), findsOneWidget);
       expect(find.text('检查更新'), findsOneWidget);
+      expect(find.textContaining('· Build'), findsNothing,
+          reason: '版本号后不得再拼接 Build 标注');
     });
   });
 

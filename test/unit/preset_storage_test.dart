@@ -1,4 +1,4 @@
-/// 编程预置词存储层测试：CRUD / 名称必填与唯一性 / 内容 300 字上限 /
+/// 编程预置词存储层测试：CRUD / 名称必填与唯一性 / 内容 1000 字上限 /
 /// 编辑排除自身 / 删除。
 library;
 
@@ -76,12 +76,12 @@ void main() {
       expect(list.first.content, '更新内容');
     });
 
-    test('内容恰好 300 字 → 通过；301 字 → FormatException', () async {
-      await storage.savePreset(preset('p1', content: '字' * 300));
+    test('内容恰好 1000 字 → 通过；1001 字 → FormatException', () async {
+      await storage.savePreset(preset('p1', content: '字' * 1000));
       await expectLater(
-        storage.savePreset(preset('p2', name: '另一个', content: '字' * 301)),
+        storage.savePreset(preset('p2', name: '另一个', content: '字' * 1001)),
         throwsA(predicate((e) =>
-            e is FormatException && e.message.contains('300'))),
+            e is FormatException && e.message.contains('1000'))),
       );
     });
 

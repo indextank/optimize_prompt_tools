@@ -57,8 +57,8 @@ void main() {
     await appState.saveService(
         testService(id: 'svc-2', provider: 'kimi', model: 'k3', isDefault: false),
         apiKey: 'sk2');
-    await appState.settings
-        .update(appState.settings.settings.copyWith(parallelEnabled: true));
+    // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+    appState.session.parallelEnabled = true;
     appState.session.parallelServiceId = 'svc-2';
     appState.session.rawText = '帮我写个爬虫爬豆瓣 Top250';
     appState.session.mode = OptimizeMode.deep;

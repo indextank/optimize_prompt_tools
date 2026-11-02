@@ -539,8 +539,8 @@ class CodingPreset {
   /// 创建时间（epoch 秒）
   final int createdAt;
 
-  /// 内容字数上限（300 个汉字）
-  static const int maxContentChars = 300;
+  /// 内容字数上限（1000 个字符，汉字按 1 字计）
+  static const int maxContentChars = 1000;
 
   Map<String, dynamic> toJson() => {
         'id': id,

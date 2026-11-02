@@ -3,7 +3,7 @@
 /// - 导入还原：空库逐条还原（字段一致）；同 id 覆盖更新
 /// - 名称冲突自动去重命名（导入不中断）
 /// - 旧版导出（无 presets 段）向后兼容
-/// - 非法预置词（空名/超 300 字）整体拒绝、不写任何数据
+/// - 非法预置词（空名/超 1000 字）整体拒绝、不写任何数据
 library;
 
 import 'dart:convert';
@@ -112,20 +112,20 @@ void main() {
       expect(state.parseImportedPresets(legacy), isEmpty);
     });
 
-    test('非法预置词（超 300 字）整体拒绝', () {
+    test('非法预置词（超 1000 字）整体拒绝', () {
       final state = appState;
       final bad = jsonEncode({
         'app': 'prompt_optimizer',
         'config_version': 1,
         'presets': [
           _p('p1').toJson(),
-          _p('p2', name: '超长', content: '字' * 301).toJson(),
+          _p('p2', name: '超长', content: '字' * 1001).toJson(),
         ],
       });
       expect(
           () => state.parseImportedPresets(bad),
           throwsA(predicate((e) =>
-              e is FormatException && e.message.contains('300'))));
+              e is FormatException && e.message.contains('1000'))));
     });
 
     test('非法结构（presets 非数组/条目非对象）拒绝', () {

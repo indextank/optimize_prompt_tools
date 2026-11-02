@@ -8,8 +8,21 @@ import 'package:prompt_optimizer/core/errors.dart';
 import 'package:prompt_optimizer/core/models.dart';
 import 'package:prompt_optimizer/services/key_store.dart';
 import 'package:prompt_optimizer/state/app_state.dart';
+import 'package:prompt_optimizer/state/workbench_tabs.dart';
 
 import '../fakes.dart';
+
+class _DelayedMemoryKeyStore extends MemoryKeyStore {
+  _DelayedMemoryKeyStore(this.delay);
+
+  final Duration delay;
+
+  @override
+  Future<String?> read(String keyRef) async {
+    await Future<void>.delayed(delay);
+    return super.read(keyRef);
+  }
+}
 
 void main() {
   late FakeLlmClient llm;
@@ -23,7 +36,8 @@ void main() {
     state.session.outputStyle = OutputStyle.full; // 本文件用例均基于六段式契约
   });
 
-  ServiceConfig svcOf(String id, {String provider = 'deepseek', bool isDefault = false}) =>
+  ServiceConfig svcOf(String id,
+          {String provider = 'deepseek', bool isDefault = false}) =>
       testService(id: id, provider: provider, isDefault: isDefault);
 
   group('服务配置管理', () {
@@ -43,8 +57,7 @@ void main() {
     test('删除服务清理密钥、默认标记、并行选择与会话引用', () async {
       await state.saveService(svcOf('a'), apiKey: 'k');
       await state.saveService(svcOf('b', provider: 'kimi'), apiKey: 'k2');
-      await state.settings.update(
-          state.settings.settings.copyWith(parallelEnabled: true));
+      state.session.parallelEnabled = true;
       state.session.parallelServiceId = 'b';
       final svcB = state.services.firstWhere((s) => s.id == 'b');
       await state.deleteService(svcB);
@@ -76,7 +89,8 @@ void main() {
       await state.saveService(svcOf('a'), apiKey: 'sk');
       state.session.rawText = '帮我写个爬虫';
       state.session.mode = OptimizeMode.deep;
-      state.session.outputStyle = OutputStyle.full; // 结构化契约用例显式指定完整模式 // 深度流程显式指定（默认为快速）
+      state.session.outputStyle =
+          OutputStyle.full; // 结构化契约用例显式指定完整模式 // 深度流程显式指定（默认为快速）
     });
 
     test('深度优化：结果落库、评分记录、会话就绪', () async {
@@ -105,8 +119,8 @@ void main() {
     });
 
     test('调用失败写入可读错误信息（鉴权失败）', () async {
-      llm.enqueueError(
-          const LlmException(LlmErrorKind.unauthorized, '401', statusCode: 401));
+      llm.enqueueError(const LlmException(LlmErrorKind.unauthorized, '401',
+          statusCode: 401));
       final rec = await state.startOptimize();
       expect(rec, isNull);
       expect(state.session.errorMessage, contains('API KEY'));
@@ -140,8 +154,7 @@ void main() {
 
     test('并行优化：默认+对比模型，全部成功落库', () async {
       await state.saveService(svcOf('b', provider: 'kimi'), apiKey: 'k2');
-      await state.settings.update(
-          state.settings.settings.copyWith(parallelEnabled: true));
+      state.session.parallelEnabled = true;
       state.session.parallelServiceId = 'b';
       llm.enqueueText(kValidContractJson);
       llm.enqueueText(kValidContractJson);
@@ -149,7 +162,8 @@ void main() {
       expect(rec, isNotNull);
       expect(rec!.providers, hasLength(2));
       expect(state.session.parallelStates, hasLength(2));
-      expect(state.session.parallelStates.values.every((s) => s.success), isTrue);
+      expect(
+          state.session.parallelStates.values.every((s) => s.success), isTrue);
     });
 
     test('并行对比：两路请求真正同时发起（非排队串行）', () async {
@@ -157,8 +171,7 @@ void main() {
       llm.enqueueText('甲模型输出' * 100);
       llm.enqueueText('乙模型输出' * 100);
       await state.saveService(svcOf('b', provider: 'kimi'), apiKey: 'sk-b');
-      await state.settings.update(
-          state.settings.settings.copyWith(parallelEnabled: true));
+      state.session.parallelEnabled = true;
       state.session.parallelServiceId = 'b';
       state.session.rawText = '原文';
       final fut = state.startOptimize();
@@ -171,13 +184,60 @@ void main() {
           reason: '此时两路均应仍在进行中（证明请求同时发出而非已完成）');
       final rec = await fut;
       expect(rec, isNotNull);
-      expect(state.session.parallelStates.values.every((s) => s.success), isTrue);
+      expect(
+          state.session.parallelStates.values.every((s) => s.success), isTrue);
+    });
+
+    test('并行优化取消：关闭事件流且不落库', () async {
+      llm.chunkDelay = const Duration(milliseconds: 5);
+      llm.enqueueText(kValidContractJson);
+      llm.enqueueText(kValidContractJson);
+      await state.saveService(svcOf('b', provider: 'kimi'), apiKey: 'sk-b');
+      state.session.parallelEnabled = true;
+      state.session.parallelServiceId = 'b';
+
+      final future = state.startOptimize();
+      for (var i = 0; i < 100 && llm.capturedRequests.length < 2; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      expect(llm.capturedRequests, hasLength(2));
+
+      state.cancelOptimize();
+      final record = await future;
+
+      expect(record, isNull);
+      expect(await state.storage.recordCount(), 0);
+    });
+
+    test('并行优化在句柄创建前取消：不再发起请求或落库', () async {
+      final delayedState = await makeTestAppState(
+        llm: llm,
+        keyStore: _DelayedMemoryKeyStore(const Duration(milliseconds: 20)),
+      );
+      addTearDown(delayedState.dispose);
+      await delayedState.saveService(svcOf('a'), apiKey: 'sk-a');
+      await delayedState.saveService(svcOf('b', provider: 'kimi'),
+          apiKey: 'sk-b');
+      delayedState.session.parallelEnabled = true;
+      delayedState.session.parallelServiceId = 'b';
+      delayedState.session.rawText = '原文';
+      delayedState.session.mode = OptimizeMode.deep;
+      delayedState.session.outputStyle = OutputStyle.full;
+      llm.enqueueText(kValidContractJson);
+      llm.enqueueText(kValidContractJson);
+
+      final future = delayedState.startOptimize();
+      delayedState.cancelOptimize();
+      final record = await future;
+
+      expect(record, isNull);
+      expect(llm.capturedRequests, isEmpty);
+      expect(await delayedState.storage.recordCount(), 0);
     });
 
     test('简单模式并行对比：两路均输出简单模式格式（修复并行错出完整格式）', () async {
       await state.saveService(svcOf('b', provider: 'kimi'), apiKey: 'sk-b');
-      await state.settings.update(
-          state.settings.settings.copyWith(parallelEnabled: true));
+      state.session.parallelEnabled = true;
       state.session.parallelServiceId = 'b';
       state.session.outputStyle = OutputStyle.simple; // 简单模式
       llm.enqueueText('模型甲的一段连贯提示词');
@@ -199,12 +259,11 @@ void main() {
 
     test('并行：单家失败仍落库成功方结果', () async {
       await state.saveService(svcOf('b', provider: 'kimi'), apiKey: 'k2');
-      await state.settings.update(
-          state.settings.settings.copyWith(parallelEnabled: true));
+      state.session.parallelEnabled = true;
       state.session.parallelServiceId = 'b';
       llm.enqueueText(kValidContractJson);
-      llm.enqueueError(
-          const LlmException(LlmErrorKind.unauthorized, '401', statusCode: 401));
+      llm.enqueueError(const LlmException(LlmErrorKind.unauthorized, '401',
+          statusCode: 401));
       final rec = await state.startOptimize();
       expect(rec, isNotNull);
       final states = state.session.parallelStates.values.toList();
@@ -218,7 +277,8 @@ void main() {
       await state.saveService(svcOf('a'), apiKey: 'sk');
       state.session.rawText = '原文';
       state.session.mode = OptimizeMode.deep;
-      state.session.outputStyle = OutputStyle.full; // 结构化契约用例显式指定完整模式 // 深度流程显式指定（默认为快速）
+      state.session.outputStyle =
+          OutputStyle.full; // 结构化契约用例显式指定完整模式 // 深度流程显式指定（默认为快速）
       llm.enqueueText(kValidContractJson);
       await state.startOptimize();
     });
@@ -250,8 +310,7 @@ void main() {
 
     test('AI 重写段落', () async {
       llm.enqueueText('新的验收标准内容');
-      final out =
-          await state.rewriteSection('acceptance', '验收标准', '旧内容');
+      final out = await state.rewriteSection('acceptance', '验收标准', '旧内容');
       expect(out, '新的验收标准内容');
     });
   });
@@ -271,8 +330,16 @@ void main() {
       final json = jsonEncode({
         'version': 1,
         'services': [
-          {'provider': 'deepseek', 'api_url': 'https://api.deepseek.com', 'model': 'deepseek-flash'},
-          {'provider': 'unknown-vendor', 'api_url': 'https://x.com', 'model': 'm'},
+          {
+            'provider': 'deepseek',
+            'api_url': 'https://api.deepseek.com',
+            'model': 'deepseek-flash'
+          },
+          {
+            'provider': 'unknown-vendor',
+            'api_url': 'https://x.com',
+            'model': 'm'
+          },
         ],
       });
       final n = await state.importConfigJson(json);
@@ -291,13 +358,61 @@ void main() {
       await state.saveService(svcOf('a'), apiKey: 'sk');
       state.session.rawText = '原文A';
       state.session.mode = OptimizeMode.deep;
+      state.session.sceneId = 'writing'; // 非默认场景，验证 scene 回填
       llm.enqueueText(kValidContractJson);
       final rec = (await state.startOptimize())!;
       state.session.rawText = '';
+      final originalTab = state.tabs.activeTab;
       await state.openRecord(rec);
+      expect(state.tabs.tabs, hasLength(2));
+      expect(state.tabs.activeTab, isNot(same(originalTab)));
+      expect(originalTab.state.rawText, isEmpty);
       expect(state.session.rawText, '原文A');
       expect(state.session.currentRecord!.id, rec.id);
+      expect(state.session.sceneId, rec.scene);
       expect(state.session.mode, OptimizeMode.deep);
+      expect(state.session.status, OptimizationRunStatus.success);
+      expect(state.tabs.activeTab.controller.text, '原文A');
+      // 原 active tab 的输入与结果不被 openRecord 覆盖
+      expect(originalTab.state.currentRecord!.id, rec.id);
+      expect(originalTab.state.singleResult, isNotNull);
+      expect(originalTab.state.status, OptimizationRunStatus.success);
+    });
+
+    test('清空历史清理所有 tab，success 无记录的 tab 置 empty', () async {
+      final first = state.tabs.activeTab;
+      final second = state.tabs.addTab();
+      final third = state.tabs.addTab();
+      final rec = OptimizeRecord(
+        id: 'rec-1',
+        scene: kDefaultScene.id,
+        mode: OptimizeMode.deep,
+        rawText: 'raw',
+        versions: [
+          OptimizeVersion(v: 1, result: OptimizeResult.unstructured('res')),
+        ],
+        providers: const ['a'],
+        createdAt: 1,
+      );
+      await state.storage.saveRecord(rec);
+      first.state.currentRecord = rec;
+      first.state.status = OptimizationRunStatus.success;
+      second.state.status = OptimizationRunStatus.success; // success 但无记录
+      third.state.currentRecord = rec;
+      third.state.status = OptimizationRunStatus.error;
+      third.state.errorMessage = 'boom';
+
+      await state.clearHistory();
+
+      expect(await state.storage.recordCount(), 0);
+      expect(first.state.currentRecord, isNull);
+      expect(first.state.status, OptimizationRunStatus.empty);
+      expect(second.state.currentRecord, isNull);
+      expect(second.state.status, OptimizationRunStatus.empty,
+          reason: 'success 无记录的 tab 也应置 empty');
+      expect(third.state.currentRecord, isNull);
+      expect(third.state.status, OptimizationRunStatus.error,
+          reason: '非 success 状态不被 clearHistory 改写');
     });
 
     test('清空历史', () async {
@@ -309,6 +424,8 @@ void main() {
       expect(await state.storage.recordCount(), 1);
       await state.clearHistory();
       expect(await state.storage.recordCount(), 0);
+      expect(state.session.currentRecord, isNull);
+      expect(state.session.status, OptimizationRunStatus.empty);
     });
   });
 }

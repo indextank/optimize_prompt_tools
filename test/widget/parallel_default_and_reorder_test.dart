@@ -54,7 +54,10 @@ void main() {
       await tester.tap(toggle);
       await tester.pump(const Duration(milliseconds: 400));
 
-      expect(appState.settings.settings.parallelEnabled, isTrue);
+      // 新语义：开关写入 tab（会话）状态，不再更新全局设置
+      expect(appState.session.parallelEnabled, isTrue);
+      expect(appState.settings.settings.parallelEnabled, isFalse,
+          reason: '开关不再更新全局 settings');
       expect(appState.session.parallelServiceId, 'b',
           reason: '默认选中对比下拉中的第一个候选（beta）');
     });

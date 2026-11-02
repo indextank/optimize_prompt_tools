@@ -23,7 +23,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
-    final bytes = await File(fontPath!).readAsBytes();
+    final bytes = await File(fontPath).readAsBytes();
     final loader = FontLoader('NotoCJK')
       ..addFont(Future.value(ByteData.sublistView(bytes)));
     await loader.load();

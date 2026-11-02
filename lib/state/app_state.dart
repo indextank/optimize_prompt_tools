@@ -20,63 +20,37 @@ import '../services/optimize_engine.dart';
 import '../services/parallel_scheduler.dart';
 import '../services/settings_service.dart';
 import '../services/storage/app_storage.dart';
+import 'workbench_tabs.dart';
 
-/// 工作台会话状态
-class WorkbenchSession {
-  String rawText = '';
-  OptimizeMode mode = OptimizeMode.deep;
-  String sceneId = kDefaultScene.id;
+/// 一次请求启动时的不可变快照。异步回调只允许写入这里捕获的 tab。
+class _OptimizeSnapshot {
+  const _OptimizeSnapshot({
+    required this.runtime,
+    required this.generation,
+    required this.raw,
+    required this.scene,
+    required this.service,
+    required this.mode,
+    required this.outputStyle,
+    required this.preset,
+    required this.parallelEnabled,
+    required this.parallelServiceId,
+  });
 
-  /// 会话级临时选用的服务 id（空 = 跟随全局默认）
-  String sessionServiceId = '';
+  final WorkbenchTabRuntime runtime;
+  final int generation;
+  final String raw;
+  final SceneTemplate scene;
+  final ServiceConfig service;
+  final OptimizeMode mode;
+  final OutputStyle outputStyle;
+  final CodingPreset? preset;
+  final bool parallelEnabled;
+  final String? parallelServiceId;
 
-  bool optimizing = false;
-  bool askAnswering = false;
-
-  /// 输出详略（简单/完整模式），跟随会话、重启后恢复默认
-  OutputStyle outputStyle = OutputStyle.simple;
-
-  /// 并行对比选中的对比服务（单选，跟随会话；须不同于当前生效服务）
-  String? parallelServiceId;
-
-  /// 编程预置词选中项（可为空；仅 AI 编程/Bug 修复场景展示该下拉）
-  String? presetId;
-
-  /// 流式中间文本（按服务 id 分组）
-  final Map<String, String> streaming = {};
-
-  /// 并行结果（服务 id → 状态）
-  final Map<String, ParallelRunState> parallelStates = {};
-
-  /// 单模型结果
-  EngineRunResult? singleResult;
-
-  /// 并行模式下被丢弃的服务商名（超上限）
-  List<String> droppedProviderNames = [];
-
-  /// 提问式：当前问题与答案
-  List<ClarifyQuestion> questions = [];
-  List<String?> answers = [];
-
-  /// 当前正在编辑/展示的记录（优化完成或从历史打开）
-  OptimizeRecord? currentRecord;
-
-  String? errorMessage;
-
-  CancelToken? cancelToken;
-
-  void reset() {
-    optimizing = false;
-    askAnswering = false;
-    streaming.clear();
-    parallelStates.clear();
-    singleResult = null;
-    droppedProviderNames = [];
-    questions = [];
-    answers = [];
-    errorMessage = null;
-    cancelToken = null;
-  }
+  OptimizationTabState get tab => runtime.state;
+  String get tabId => tab.id;
+  bool get isCurrent => runtime.isCurrent(generation);
 }
 
 class AppState extends ChangeNotifier {
@@ -87,12 +61,19 @@ class AppState extends ChangeNotifier {
     required this.engine,
     required this.llmClient,
   }) : scheduler = ParallelScheduler(engine: engine) {
+    tabs = WorkbenchTabsController(
+      stateFactory: (id, title) => OptimizationTabState(
+        id: id,
+        title: title,
+        mode: settings.settings.defaultMode,
+        sceneId: settings.settings.defaultScene,
+        parallelEnabled: settings.settings.parallelEnabled,
+      ),
+    );
+    tabs.addListener(notifyListeners);
     // 转发设置变更：设置页/模型配置页/工作台均只监听 AppState，
     // SettingsService 的变更必须驱动整体重绘，否则开关类控件表现为「点击无响应」
     settings.addListener(notifyListeners);
-    // 会话初始值跟随设置（默认优化模式 / 默认场景模板）
-    session.mode = settings.settings.defaultMode;
-    session.sceneId = settings.settings.defaultScene;
   }
 
   final AppStorage storage;
@@ -101,8 +82,15 @@ class AppState extends ChangeNotifier {
   final OptimizeEngine engine;
   final LlmClient llmClient;
   final ParallelScheduler scheduler;
+  late final WorkbenchTabsController tabs;
 
-  final WorkbenchSession session = WorkbenchSession();
+  /// 兼容单工作台调用方；新代码应显式传入 tabId。
+  OptimizationTabState get session => tabs.activeTab.state;
+
+  WorkbenchTabRuntime? _runtimeFor([String? tabId]) =>
+      tabId == null ? tabs.activeTab : tabs.tabById(tabId);
+
+  OptimizationTabState? _tabFor([String? tabId]) => _runtimeFor(tabId)?.state;
 
   List<ServiceConfig> services = [];
   List<SceneTemplate> customTemplates = [];
@@ -139,9 +127,11 @@ class AppState extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------- 编程预置词
-  /// 当前会话选中的编程预置词（未选择或已删除时为 null）
-  CodingPreset? get selectedPreset {
-    final id = session.presetId;
+  /// 当前 tab 选中的编程预置词（未选择或已删除时为 null）
+  CodingPreset? get selectedPreset => selectedPresetFor();
+
+  CodingPreset? selectedPresetFor([String? tabId]) {
+    final id = _tabFor(tabId)?.presetId;
     if (id == null || id.isEmpty) return null;
     return presets.where((p) => p.id == id).firstOrNull;
   }
@@ -152,7 +142,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 保存（新增/编辑）；名称必填/唯一、内容 ≤300 字校验失败抛 [FormatException]
+  /// 保存（新增/编辑）；名称必填/唯一、内容 ≤1000 字校验失败抛 [FormatException]
   Future<void> savePreset(CodingPreset preset) async {
     await storage.savePreset(preset);
     await refreshPresets();
@@ -161,8 +151,10 @@ class AppState extends ChangeNotifier {
   Future<void> deletePreset(String id) async {
     await storage.deletePreset(id);
     await refreshPresets();
-    // 被删除的预置词若正被会话引用，清空选择（与删服务清并行选择同惯例）
-    if (session.presetId == id) session.presetId = null;
+    // 被删除的预置词若正被任一 tab 引用，清空选择。
+    for (final runtime in tabs.tabs) {
+      if (runtime.state.presetId == id) runtime.state.presetId = null;
+    }
     notifyListeners();
   }
 
@@ -173,12 +165,18 @@ class AppState extends ChangeNotifier {
   /// 并行优化是否可开启：必须已配置 ≥2 个服务
   bool get canEnableParallel => configuredServiceCount >= 2;
 
-  /// 当前有效的并行候选数（当前生效服务 ∪ 会话选中的对比服务，
-  /// 剔除已删除服务与重复选择）。≥2 时并行优化才真正生效，否则回落单模型。
-  int get parallelCandidateCount => {
-        if (effectiveService != null) effectiveService!.id,
-        if (session.parallelServiceId != null) session.parallelServiceId!,
-      }.where((id) => services.any((s) => s.id == id)).length;
+  /// 当前 tab 有效的并行候选数（生效服务 ∪ 选中的对比服务）。
+  int get parallelCandidateCount => parallelCandidateCountFor();
+
+  int parallelCandidateCountFor([String? tabId]) {
+    final tab = _tabFor(tabId);
+    if (tab == null) return 0;
+    final effective = effectiveServiceFor(tab.id);
+    return {
+      if (effective != null) effective.id,
+      if (tab.parallelServiceId != null) tab.parallelServiceId!,
+    }.where((id) => services.any((s) => s.id == id)).length;
+  }
 
   ServiceConfig? get defaultService {
     final id = settings.settings.defaultServiceId;
@@ -191,9 +189,13 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  /// 会话生效服务：会话级选择 > 全局默认
-  ServiceConfig? get effectiveService {
-    final sid = session.sessionServiceId;
+  /// tab 生效服务：tab 级选择 > 全局默认
+  ServiceConfig? get effectiveService => effectiveServiceFor();
+
+  ServiceConfig? effectiveServiceFor([String? tabId]) {
+    final tab = _tabFor(tabId);
+    if (tab == null) return null;
+    final sid = tab.sessionServiceId;
     if (sid.isNotEmpty) {
       for (final s in services) {
         if (s.id == sid) return s;
@@ -217,23 +219,35 @@ class AppState extends ChangeNotifier {
     }
     await storage.saveService(toSave);
     if (toSave.isDefault) {
-      await settings.update(settings.settings.copyWith(defaultServiceId: toSave.id));
+      for (final runtime in tabs.tabs) {
+        if (runtime.state.parallelServiceId == toSave.id) {
+          runtime.state.parallelServiceId = null;
+        }
+      }
+      await settings
+          .update(settings.settings.copyWith(defaultServiceId: toSave.id));
     }
     services = await storage.loadServices();
     notifyListeners();
   }
 
   Future<void> deleteService(ServiceConfig service) async {
-    final wasDefault = service.isDefault ||
-        settings.settings.defaultServiceId == service.id;
+    final wasDefault =
+        service.isDefault || settings.settings.defaultServiceId == service.id;
     await storage.deleteService(service.id);
     if (service.keyRef.isNotEmpty) await keyStore.delete(service.keyRef);
     if (settings.settings.defaultServiceId == service.id) {
       await settings.update(settings.settings.copyWith(defaultServiceId: ''));
     }
-    // 会话并行选择指向被删服务时清空
-    if (session.parallelServiceId == service.id) session.parallelServiceId = null;
-    if (session.sessionServiceId == service.id) session.sessionServiceId = '';
+    // 任一 tab 的服务选择指向被删服务时清空。
+    for (final runtime in tabs.tabs) {
+      if (runtime.state.parallelServiceId == service.id) {
+        runtime.state.parallelServiceId = null;
+      }
+      if (runtime.state.sessionServiceId == service.id) {
+        runtime.state.sessionServiceId = '';
+      }
+    }
     services = await storage.loadServices();
     // 删除的是默认服务且仍有其他服务：自动递补第一个为默认，避免无效默认态
     if (wasDefault && services.isNotEmpty) {
@@ -244,8 +258,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> setDefaultService(String id) async {
-    if (session.parallelServiceId == id) {
-      session.parallelServiceId = null; // 默认服务变更后与对比选择冲突时清空
+    for (final runtime in tabs.tabs) {
+      if (runtime.state.parallelServiceId == id) {
+        runtime.state.parallelServiceId = null; // 默认服务与对比服务不可相同
+      }
     }
     for (final s in services) {
       await storage.saveService(s.copyWith(isDefault: s.id == id));
@@ -255,16 +271,20 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setSessionService(String id) {
-    if (session.parallelServiceId == id) {
-      session.parallelServiceId = null; // 生效服务与对比服务不可相同
+  void setSessionService(String id, {String? tabId}) {
+    final runtime = _runtimeFor(tabId);
+    if (runtime == null) return;
+    final tab = runtime.state;
+    if (tab.parallelServiceId == id) {
+      tab.parallelServiceId = null; // 生效服务与对比服务不可相同
     }
-    session.sessionServiceId = id;
-    notifyListeners();
+    tab.sessionServiceId = id;
+    tabs.touch(tab.id);
   }
 
   /// 测试连接
-  Future<ConnectionTestResult> testConnection(ServiceConfig service, String apiKey) {
+  Future<ConnectionTestResult> testConnection(
+      ServiceConfig service, String apiKey) {
     return llmClient.testConnection(ChatRequest(
       baseUrl: service.apiUrl,
       apiKey: apiKey,
@@ -346,7 +366,8 @@ class AppState extends ChangeNotifier {
   }
 
   /// 在线拉取模型列表
-  Future<List<String>> fetchModels(String provider, String apiUrl, String apiKey) {
+  Future<List<String>> fetchModels(
+      String provider, String apiUrl, String apiKey) {
     final cfg = getProviderConfig(provider);
     if (cfg == null) return Future.value(const []);
     if (!cfg.supportsModelListApi) return Future.value(cfg.models);
@@ -356,70 +377,141 @@ class AppState extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------------ 优化
-  bool get canOptimize =>
-      !session.optimizing &&
-      !session.askAnswering && // 提问式答题中禁止重复触发优化
-      session.rawText.trim().isNotEmpty &&
-      session.rawText.trim().length <= OptimizeEngine.maxInputChars &&
-      effectiveService != null;
+  bool get canOptimize => canOptimizeFor();
 
-  /// 开始优化（主入口，自动分派模式与并行）
-  Future<OptimizeRecord?> startOptimize() async {
-    if (!canOptimize) return null;
-    final raw = session.rawText.trim();
-    final scene = sceneById(session.sceneId);
-    final svc = effectiveService!;
+  bool canOptimizeFor([String? tabId]) {
+    final tab = _tabFor(tabId);
+    if (tab == null) return false;
+    final raw = tab.rawText.trim();
+    return !tab.optimizing &&
+        !tab.askAnswering && // 提问式答题中禁止重复触发优化
+        raw.isNotEmpty &&
+        raw.length <= OptimizeEngine.maxInputChars &&
+        effectiveServiceFor(tab.id) != null;
+  }
 
-    session.reset();
-    session.optimizing = true;
-    notifyListeners();
+  /// 开始优化（主入口，自动分派模式与并行）。缺省只操作当前 tab。
+  Future<OptimizeRecord?> startOptimize({String? tabId}) async {
+    final runtime = _runtimeFor(tabId);
+    if (runtime == null || !canOptimizeFor(runtime.state.id)) return null;
+    final tab = runtime.state;
+    final id = tab.id;
+    final snapshot = _OptimizeSnapshot(
+      runtime: runtime,
+      generation: runtime.beginRun(),
+      raw: tab.rawText.trim(),
+      scene: sceneById(tab.sceneId),
+      service: effectiveServiceFor(id)!,
+      mode: tab.mode,
+      outputStyle: tab.outputStyle,
+      preset: selectedPresetFor(id),
+      parallelEnabled: tab.parallelEnabled,
+      parallelServiceId: tab.parallelServiceId,
+    );
+    final useParallel =
+        snapshot.parallelEnabled && parallelCandidateCountFor(id) >= 2;
+
+    tab.reset();
+    tab.status = OptimizationRunStatus.loading;
+    runtime.cancelToken = null;
+    runtime.parallelRun = null;
+    tabs.touch(id);
 
     final stopwatch = Stopwatch()..start();
     try {
-      final preset = selectedPreset;
-      // 并行守卫：设置开启 + 当前并行候选 ≥2 才走并行，否则单模型
-      if (settings.settings.parallelEnabled && parallelCandidateCount >= 2) {
-        return await _runParallel(raw, scene, svc, stopwatch, preset);
-      }
-      return await _runSingle(raw, scene, svc, stopwatch, preset);
+      if (useParallel) return await _runParallel(snapshot, stopwatch);
+      return await _runSingle(snapshot);
     } finally {
-      session.optimizing = false;
-      notifyListeners();
+      _finishRun(snapshot);
     }
   }
 
-  Future<OptimizeRecord?> _runSingle(String raw, SceneTemplate scene,
-      ServiceConfig svc, Stopwatch sw, CodingPreset? preset) async {
-    final key = await readApiKey(svc) ?? '';
-    final token = session.cancelToken = CancelToken();
+  void _setRunError(_OptimizeSnapshot snapshot, Object error) {
+    if (!snapshot.isCurrent) return;
+    final tab = snapshot.tab;
+    tab.status = OptimizationRunStatus.error;
+    if (error is LlmException) {
+      if (error.kind != LlmErrorKind.cancelled) {
+        tab.errorMessage = error.userMessage;
+      }
+    } else {
+      tab.errorMessage = '优化失败：$error';
+    }
+  }
+
+  /// 只收尾仍属于当前 generation 的运行，旧回调不得触碰新 run。
+  void _finishRun(_OptimizeSnapshot snapshot) {
+    if (!snapshot.isCurrent) return;
+    final tab = snapshot.tab;
+    if (tab.optimizing) {
+      tab.status = OptimizationRunStatus.error;
+      tab.errorMessage ??= '优化已中断';
+    }
+    snapshot.runtime.cancelToken = null;
+    snapshot.runtime.parallelRun = null;
+    tabs.touch(snapshot.tabId);
+  }
+
+  /// 保存本次 run 的新 UUID 记录；若等待落库期间失效，只回滚这条记录。
+  /// generation 后检与成功状态提交之间不再穿插 await。
+  Future<bool> _saveRecordIfCurrent(_OptimizeSnapshot snapshot,
+      OptimizeRecord record, void Function() commit) async {
+    if (!snapshot.isCurrent) return false;
+    await storage.saveRecord(record);
+    if (!snapshot.isCurrent) {
+      await storage.deleteRecord(record.id);
+      return false;
+    }
+    commit();
+    return true;
+  }
+
+  Future<OptimizeRecord?> _runSingle(_OptimizeSnapshot snapshot) async {
+    final runtime = snapshot.runtime;
+    final tab = snapshot.tab;
+    final svc = snapshot.service;
     try {
-      if (session.mode == OptimizeMode.ask) {
-        final qs = await engine.askQuestions(svc, key, raw,
-            scene: scene, preset: preset, cancelToken: token);
-        session.questions = qs;
-        session.answers = List.filled(qs.length, null);
-        session.askAnswering = true;
+      final key = await readApiKey(svc) ?? '';
+      if (!snapshot.isCurrent) return null;
+      final token = runtime.cancelToken = CancelToken();
+      if (snapshot.mode == OptimizeMode.ask) {
+        final qs = await engine.askQuestions(
+          svc,
+          key,
+          snapshot.raw,
+          scene: snapshot.scene,
+          preset: snapshot.preset,
+          cancelToken: token,
+        );
+        if (!snapshot.isCurrent) return null;
+        tab.questions = qs;
+        tab.answers = List.filled(qs.length, null);
+        tab.askAnswering = true;
+        tab.status = OptimizationRunStatus.empty;
         return null; // 等待用户回答后由 finalizeAsk 落库
       }
       final res = await engine.optimize(
-        style: session.outputStyle,
+        style: snapshot.outputStyle,
         svc,
         key,
-        raw,
-        mode: session.mode,
-        scene: scene,
-        preset: preset,
+        snapshot.raw,
+        mode: snapshot.mode,
+        scene: snapshot.scene,
+        preset: snapshot.preset,
         cancelToken: token,
         onProgress: (t) {
-          session.streaming[svc.id] = t;
-          notifyListeners();
+          if (!snapshot.isCurrent) return;
+          tab.streaming[svc.id] = t;
+          tab.status = OptimizationRunStatus.streaming;
+          tabs.touch(snapshot.tabId);
         },
       );
+      if (!snapshot.isCurrent) return null;
       final record = OptimizeRecord(
         id: _uuid.v4(),
-        scene: scene.id,
-        mode: session.mode,
-        rawText: raw,
+        scene: snapshot.scene.id,
+        mode: snapshot.mode,
+        rawText: snapshot.raw,
         versions: [
           OptimizeVersion(v: 1, result: res.result, createdAt: _nowSec()),
         ],
@@ -430,117 +522,188 @@ class AppState extends ChangeNotifier {
         tokens: res.totalTokens ?? 0,
         createdAt: _nowSec(),
       );
-      await storage.saveRecord(record);
-      session.currentRecord = record;
-      session.singleResult = res;
+      final saved = await _saveRecordIfCurrent(snapshot, record, () {
+        tab.currentRecord = record;
+        tab.singleResult = res;
+        tab.status = OptimizationRunStatus.success;
+        tab.errorMessage = null;
+      });
+      if (!saved) return null;
       return record;
     } on LlmException catch (e) {
-      if (e.kind != LlmErrorKind.cancelled) session.errorMessage = e.userMessage;
+      _setRunError(snapshot, e);
       return null;
     } catch (e) {
-      session.errorMessage = '优化失败：$e';
+      _setRunError(snapshot, e);
       return null;
     }
   }
 
-  Future<OptimizeRecord?> _runParallel(String raw, SceneTemplate scene,
-      ServiceConfig primary, Stopwatch sw, CodingPreset? preset) async {
-    // 并行集合：当前生效服务 + 工作台选中的对比服务（单选）
+  Future<OptimizeRecord?> _runParallel(
+      _OptimizeSnapshot snapshot, Stopwatch sw) async {
+    final runtime = snapshot.runtime;
+    final tab = snapshot.tab;
+    final primary = snapshot.service;
+    // 并行集合在首个 await 前从快照确定，之后绝不回读激活 tab。
     final ids = <String>{
       primary.id,
-      if (session.parallelServiceId != null) session.parallelServiceId!,
+      if (snapshot.parallelServiceId != null) snapshot.parallelServiceId!,
     }.toList();
     final svcs = [for (final id in ids) ...services.where((s) => s.id == id)];
-    final keys = [for (final s in svcs) await readApiKey(s) ?? ''];
+    try {
+      final keys = <String>[];
+      for (final svc in svcs) {
+        keys.add(await readApiKey(svc) ?? '');
+        if (!snapshot.isCurrent) return null;
+      }
 
-    final (events, dropped) = scheduler.run(svcs, keys, raw,
-        mode: session.mode, style: session.outputStyle, scene: scene,
-        preset: preset,
-        onItemProgress: (id, t) {
-      session.streaming[id] = t;
-      notifyListeners();
-    });
-    session.droppedProviderNames = [
-      for (final s in dropped) getProviderConfig(s.provider)?.name ?? s.provider
-    ];
-    for (final s in svcs) {
-      session.parallelStates[s.id] = ParallelRunState(service: s, apiKey: '');
-    }
-    notifyListeners();
+      final handle = scheduler.run(
+        svcs,
+        keys,
+        snapshot.raw,
+        mode: snapshot.mode,
+        style: snapshot.outputStyle,
+        scene: snapshot.scene,
+        preset: snapshot.preset,
+        onItemProgress: (id, text) {
+          if (!snapshot.isCurrent) return;
+          tab.streaming[id] = text;
+          tab.status = OptimizationRunStatus.streaming;
+          tabs.touch(snapshot.tabId);
+        },
+      );
+      runtime.parallelRun = handle;
+      tab.droppedProviderNames = [
+        for (final s in handle.droppedServices)
+          getProviderConfig(s.provider)?.name ?? s.provider
+      ];
+      // 必须保存调度器的真实 state，UI 与完成事件共享同一份进度和结果。
+      tab.parallelStates = {
+        for (final state in handle.states) state.service.id: state,
+      };
+      tabs.touch(snapshot.tabId);
 
-    await for (final ev in events) {
-      if (ev is ParallelItemDone) {
-        session.parallelStates[ev.state.service.id] = ev.state;
-        notifyListeners();
-      } else if (ev is ParallelAllDone) {
-        // 以首个成功结果落库（用户可在复查页切换来源）
-        ParallelRunState? best;
-        for (final st in ev.states) {
-          if (st.success) {
-            best = st;
-            break;
+      await for (final ev in handle.events) {
+        if (!snapshot.isCurrent) return null;
+        if (ev is ParallelItemDone) {
+          tab.parallelStates[ev.state.service.id] = ev.state;
+          tabs.touch(snapshot.tabId);
+        } else if (ev is ParallelAllDone) {
+          // 以首个成功结果落库（用户可在复查页切换来源）。
+          ParallelRunState? best;
+          for (final state in ev.states) {
+            if (state.success) {
+              best = state;
+              break;
+            }
           }
-        }
-        if (best != null) {
-          final r = best.runResult!;
-          final record = OptimizeRecord(
-            id: _uuid.v4(),
-            scene: scene.id,
-            mode: session.mode,
-            rawText: raw,
-            versions: [OptimizeVersion(v: 1, result: r.result, createdAt: _nowSec())],
-            providers: svcs.map((s) => s.id).toList(),
-            scoreBefore: r.result.scoreBefore,
-            scoreAfter: r.result.scoreAfter,
-            elapsedMs: sw.elapsedMilliseconds,
-            tokens: ev.states.fold(0, (a, b) => a + (b.runResult?.totalTokens ?? 0)),
-            createdAt: _nowSec(),
-          );
-          await storage.saveRecord(record);
-          session.currentRecord = record;
-          return record;
-        } else {
-          final firstErr = ev.states.first.error;
-          session.errorMessage =
+          if (best != null) {
+            final result = best.runResult!;
+            final record = OptimizeRecord(
+              id: _uuid.v4(),
+              scene: snapshot.scene.id,
+              mode: snapshot.mode,
+              rawText: snapshot.raw,
+              versions: [
+                OptimizeVersion(
+                    v: 1, result: result.result, createdAt: _nowSec()),
+              ],
+              providers: svcs.map((s) => s.id).toList(),
+              scoreBefore: result.result.scoreBefore,
+              scoreAfter: result.result.scoreAfter,
+              elapsedMs: sw.elapsedMilliseconds,
+              tokens: ev.states.fold<int>(
+                  0, (sum, state) => sum + (state.runResult?.totalTokens ?? 0)),
+              createdAt: _nowSec(),
+            );
+            final saved = await _saveRecordIfCurrent(snapshot, record, () {
+              tab.currentRecord = record;
+              tab.status = OptimizationRunStatus.success;
+              tab.errorMessage = null;
+            });
+            if (!saved) return null;
+            return record;
+          }
+          final firstErr = ev.states.isEmpty ? null : ev.states.first.error;
+          tab.status = OptimizationRunStatus.error;
+          tab.errorMessage =
               firstErr is LlmException ? firstErr.userMessage : '全部模型调用失败';
           return null;
         }
       }
+      return null;
+    } on LlmException catch (e) {
+      _setRunError(snapshot, e);
+      return null;
+    } catch (e) {
+      _setRunError(snapshot, e);
+      return null;
     }
-    return null;
   }
 
-  /// 提问式优化：提交答案生成终稿
-  Future<OptimizeRecord?> finalizeAsk() async {
-    final svc = effectiveService;
-    if (svc == null || !session.askAnswering) return null;
-    final raw = session.rawText.trim();
-    final scene = sceneById(session.sceneId);
-    final key = await readApiKey(svc) ?? '';
-    session.optimizing = true;
-    notifyListeners();
+  /// 提问式优化：提交答案生成终稿。loading 在首个 await 前设置以防重入。
+  Future<OptimizeRecord?> finalizeAsk({String? tabId}) async {
+    final runtime = _runtimeFor(tabId);
+    if (runtime == null) return null;
+    final tab = runtime.state;
+    final id = tab.id;
+    final svc = effectiveServiceFor(id);
+    if (svc == null || !tab.askAnswering || tab.optimizing) return null;
+    final questions = List<ClarifyQuestion>.of(tab.questions);
+    final answers = List<String?>.of(tab.answers);
+    final snapshot = _OptimizeSnapshot(
+      runtime: runtime,
+      generation: runtime.beginRun(),
+      raw: tab.rawText.trim(),
+      scene: sceneById(tab.sceneId),
+      service: svc,
+      mode: OptimizeMode.ask,
+      outputStyle: tab.outputStyle,
+      preset: selectedPresetFor(id),
+      parallelEnabled: tab.parallelEnabled,
+      parallelServiceId: tab.parallelServiceId,
+    );
+
+    tab.streaming.clear();
+    tab.parallelStates.clear();
+    tab.singleResult = null;
+    tab.droppedProviderNames.clear();
+    tab.errorMessage = null;
+    tab.status = OptimizationRunStatus.loading;
+    runtime.cancelToken = null;
+    runtime.parallelRun = null;
+    tabs.touch(id);
+
     try {
+      final key = await readApiKey(svc) ?? '';
+      if (!snapshot.isCurrent) return null;
+      final token = runtime.cancelToken = CancelToken();
       final res = await engine.finalizeAsk(
-        style: session.outputStyle,
+        style: snapshot.outputStyle,
         svc,
         key,
-        raw,
-        session.questions,
-        session.answers,
-        scene: scene,
-        preset: selectedPreset,
-        cancelToken: session.cancelToken = CancelToken(),
-        onProgress: (t) {
-          session.streaming[svc.id] = t;
-          notifyListeners();
+        snapshot.raw,
+        questions,
+        answers,
+        scene: snapshot.scene,
+        preset: snapshot.preset,
+        cancelToken: token,
+        onProgress: (text) {
+          if (!snapshot.isCurrent) return;
+          tab.streaming[svc.id] = text;
+          tab.status = OptimizationRunStatus.streaming;
+          tabs.touch(id);
         },
       );
+      if (!snapshot.isCurrent) return null;
       final record = OptimizeRecord(
         id: _uuid.v4(),
-        scene: scene.id,
+        scene: snapshot.scene.id,
         mode: OptimizeMode.ask,
-        rawText: raw,
-        versions: [OptimizeVersion(v: 1, result: res.result, createdAt: _nowSec())],
+        rawText: snapshot.raw,
+        versions: [
+          OptimizeVersion(v: 1, result: res.result, createdAt: _nowSec()),
+        ],
         providers: [svc.id],
         scoreBefore: res.result.scoreBefore,
         scoreAfter: res.result.scoreAfter,
@@ -548,83 +711,134 @@ class AppState extends ChangeNotifier {
         tokens: res.totalTokens ?? 0,
         createdAt: _nowSec(),
       );
-      await storage.saveRecord(record);
-      session.currentRecord = record;
-      session.singleResult = res;
-      session.askAnswering = false;
+      final saved = await _saveRecordIfCurrent(snapshot, record, () {
+        tab.currentRecord = record;
+        tab.singleResult = res;
+        tab.askAnswering = false;
+        tab.status = OptimizationRunStatus.success;
+        tab.errorMessage = null;
+      });
+      if (!saved) return null;
       return record;
     } on LlmException catch (e) {
-      if (e.kind != LlmErrorKind.cancelled) session.errorMessage = e.userMessage;
+      _setRunError(snapshot, e);
       return null;
     } catch (e) {
-      session.errorMessage = '优化失败：$e';
+      _setRunError(snapshot, e);
       return null;
     } finally {
-      session.optimizing = false;
-      notifyListeners();
+      _finishRun(snapshot);
     }
   }
 
-  void cancelOptimize() {
-    session.cancelToken?.cancel('user');
-    session.optimizing = false;
-    session.askAnswering = false;
-    notifyListeners();
+  void cancelOptimize({String? tabId}) {
+    final runtime = _runtimeFor(tabId);
+    if (runtime == null) return;
+    final tab = runtime.state;
+    if (!tab.optimizing && !tab.askAnswering) return;
+    runtime.invalidateRun();
+    runtime.cancelToken?.cancel('user');
+    runtime.parallelRun?.cancel();
+    runtime.cancelToken = null;
+    runtime.parallelRun = null;
+    tab.askAnswering = false;
+
+    final hasPartial = tab.streaming.values.any((text) => text.isNotEmpty) ||
+        tab.parallelStates.values.any((state) => state.streamedText.isNotEmpty);
+    tab.status = OptimizationRunStatus.error;
+    tab.errorMessage = hasPartial ? '请求已取消，已保留接收内容' : '请求已取消';
+    tabs.touch(tab.id);
+  }
+
+  /// 清空指定 tab 前必须先使旧请求失效并取消，避免迟到回调重新填回数据。
+  void clearWorkbenchTab({String? tabId}) {
+    final runtime = _runtimeFor(tabId);
+    if (runtime == null) return;
+    cancelOptimize(tabId: runtime.state.id);
+    runtime.state.rawText = '';
+    runtime.state.currentRecord = null;
+    runtime.state.reset();
+    runtime.syncControllerFromState();
+    tabs.touch(runtime.state.id);
   }
 
   // -------------------------------------------------------------- 复查编辑
   /// 追加一个新版本（编辑后保存）
-  Future<OptimizeRecord?> saveEditedResult(OptimizeResult edited) async {
-    final record = session.currentRecord;
+  Future<OptimizeRecord?> saveEditedResult(OptimizeResult edited,
+      {String? tabId}) async {
+    final runtime = _runtimeFor(tabId);
+    if (runtime == null) return null;
+    final tab = runtime.state;
+    final record = tab.currentRecord;
     if (record == null) return null;
     final nextV = record.latest.v + 1;
     final updated = record.copyWith(versions: [
       ...record.versions,
-      OptimizeVersion(v: nextV, result: edited, edited: true, createdAt: _nowSec()),
+      OptimizeVersion(
+          v: nextV, result: edited, edited: true, createdAt: _nowSec()),
     ]);
     await storage.saveRecord(updated);
-    session.currentRecord = updated;
-    notifyListeners();
+    tab.currentRecord = updated;
+    tabs.touch(tab.id);
     return updated;
   }
 
   /// 回滚到指定版本：将该版本内容复制为新版本（版本链保持单向追加）
-  Future<OptimizeRecord?> rollbackToVersion(int v) async {
-    final record = session.currentRecord;
+  Future<OptimizeRecord?> rollbackToVersion(int v, {String? tabId}) async {
+    final runtime = _runtimeFor(tabId);
+    if (runtime == null) return null;
+    final tab = runtime.state;
+    final record = tab.currentRecord;
     if (record == null) return null;
     final target = record.versions.where((e) => e.v == v).firstOrNull;
     if (target == null) return null;
-    return saveEditedResult(target.result);
+    return saveEditedResult(target.result, tabId: tab.id);
   }
 
   /// AI 重写某段，返回更新后的结果（不落库，由调用方决定）
-  Future<String> rewriteSection(String sectionKey, String sectionTitle, String content,
-      {String instruction = ''}) async {
-    final svc = effectiveService;
-    final record = session.currentRecord;
+  Future<String> rewriteSection(
+      String sectionKey, String sectionTitle, String content,
+      {String instruction = '', String? tabId}) async {
+    final runtime = _runtimeFor(tabId);
+    final tab = runtime?.state;
+    final svc = effectiveServiceFor(tab?.id);
+    final record = tab?.currentRecord;
     if (svc == null || record == null) {
       throw const LlmException(LlmErrorKind.badResponse, '无可用服务或记录');
     }
     final key = await readApiKey(svc) ?? '';
-    return engine.rewriteSection(svc, key, record.latest.result, sectionKey, sectionTitle,
-        content, instruction: instruction);
+    return engine.rewriteSection(
+        svc, key, record.latest.result, sectionKey, sectionTitle, content,
+        instruction: instruction);
   }
 
   // ------------------------------------------------------------------ 历史
-  Future<List<OptimizeRecord>> loadHistory({String keyword = '', String scene = '', String provider = ''}) =>
+  Future<List<OptimizeRecord>> loadHistory(
+          {String keyword = '', String scene = '', String provider = ''}) =>
       storage.searchRecords(keyword: keyword, scene: scene, provider: provider);
 
   Future<void> openRecord(OptimizeRecord record) async {
-    session.currentRecord = record;
-    session.rawText = record.rawText;
-    session.sceneId = record.scene;
-    session.mode = record.mode;
-    notifyListeners();
+    final runtime = tabs.addTab();
+    final tab = runtime.state;
+    tab.currentRecord = record;
+    tab.rawText = record.rawText;
+    tab.sceneId = record.scene;
+    tab.mode = record.mode;
+    tab.status = OptimizationRunStatus.success;
+    runtime.syncControllerFromState();
+    tabs.touch(tab.id);
   }
 
   Future<void> deleteRecord(String id) async {
     await storage.deleteRecord(id);
-    if (session.currentRecord?.id == id) session.currentRecord = null;
+    for (final runtime in tabs.tabs) {
+      if (runtime.state.currentRecord?.id == id) {
+        runtime.state.currentRecord = null;
+        if (runtime.state.status == OptimizationRunStatus.success) {
+          runtime.state.status = OptimizationRunStatus.empty;
+        }
+      }
+    }
     notifyListeners();
   }
 
@@ -632,6 +846,12 @@ class AppState extends ChangeNotifier {
     final all = await storage.loadRecords(limit: 1000000);
     for (final r in all) {
       await storage.deleteRecord(r.id);
+    }
+    for (final runtime in tabs.tabs) {
+      runtime.state.currentRecord = null;
+      if (runtime.state.status == OptimizationRunStatus.success) {
+        runtime.state.status = OptimizationRunStatus.empty;
+      }
     }
     notifyListeners();
   }
@@ -646,7 +866,11 @@ class AppState extends ChangeNotifier {
   Future<void> deleteTemplate(String id) async {
     await storage.deleteTemplate(id);
     customTemplates = await storage.loadCustomTemplates();
-    if (session.sceneId == id) session.sceneId = kDefaultScene.id;
+    for (final runtime in tabs.tabs) {
+      if (runtime.state.sceneId == id) {
+        runtime.state.sceneId = kDefaultScene.id;
+      }
+    }
     notifyListeners();
   }
 
@@ -703,7 +927,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// 解析导入配置中的编程预置词（可选字段：旧版本导出无此段 → 空列表）。
-  /// 严格校验：结构非法或单条非法（空名称/超 300 字等）整体抛 [FormatException]，
+  /// 严格校验：结构非法或单条非法（空名称/超 1000 字等）整体抛 [FormatException]，
   /// 调用方在解析全部通过前不得写入任何数据。
   List<CodingPreset> parseImportedPresets(String json) {
     Object? decoded;
@@ -866,6 +1090,8 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     settings.removeListener(notifyListeners);
+    tabs.removeListener(notifyListeners);
+    tabs.dispose();
     super.dispose();
   }
 }

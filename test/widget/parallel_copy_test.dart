@@ -84,8 +84,8 @@ void main() {
       final svcB = testService(id: 'b', model: 'model-B');
       await appState.saveService(svcA, apiKey: 'k1');
       await appState.saveService(svcB, apiKey: 'k2');
-      await appState.settings
-          .update(appState.settings.settings.copyWith(parallelEnabled: true));
+      // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+      appState.session.parallelEnabled = true;
       appState.session.parallelServiceId = 'b';
       appState.session.parallelStates['a'] =
           doneState(svcA, 'k1', resultText: '列一结果');
@@ -104,8 +104,8 @@ void main() {
       final svcB = testService(id: 'b', model: 'model-B');
       await appState.saveService(svcA, apiKey: 'k1');
       await appState.saveService(svcB, apiKey: 'k2');
-      await appState.settings
-          .update(appState.settings.settings.copyWith(parallelEnabled: true));
+      // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+      appState.session.parallelEnabled = true;
       appState.session.parallelServiceId = 'b';
       final stA = doneState(svcA, 'k1', resultText: '列一结果');
       final stB = doneState(svcB, 'k2', resultText: '列二结果');
@@ -135,8 +135,8 @@ void main() {
       final svcB = testService(id: 'b', model: 'model-B');
       await appState.saveService(svcA, apiKey: 'k1');
       await appState.saveService(svcB, apiKey: 'k2');
-      await appState.settings
-          .update(appState.settings.settings.copyWith(parallelEnabled: true));
+      // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+      appState.session.parallelEnabled = true;
       appState.session.parallelServiceId = 'b';
       appState.session.parallelStates['a'] = doneState(svcA, 'k1');
       appState.session.parallelStates['b'] = doneState(svcB, 'k2');
@@ -157,8 +157,8 @@ void main() {
       final svcB = testService(id: 'b', model: 'model-B');
       await appState.saveService(svcA, apiKey: 'k1');
       await appState.saveService(svcB, apiKey: 'k2');
-      await appState.settings
-          .update(appState.settings.settings.copyWith(parallelEnabled: true));
+      // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+      appState.session.parallelEnabled = true;
       appState.session.parallelServiceId = 'b';
       appState.session.parallelStates['a'] = doneState(svcA, 'k1');
       appState.session.parallelStates['b'] =
@@ -192,8 +192,8 @@ void main() {
       final svcB = testService(id: 'b', model: 'model-B');
       await appState.saveService(svcA, apiKey: 'k1');
       await appState.saveService(svcB, apiKey: 'k2');
-      await appState.settings
-          .update(appState.settings.settings.copyWith(parallelEnabled: true));
+      // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+      appState.session.parallelEnabled = true;
       appState.session.parallelServiceId = 'b';
       // 仅一路成功（另一路因缺 key 被调度器丢弃，未进 parallelStates）
       appState.session.parallelStates['a'] = doneState(svcA, 'k1');

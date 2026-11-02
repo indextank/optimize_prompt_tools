@@ -10,7 +10,7 @@ import 'package:prompt_optimizer/core/models.dart';
 import 'package:prompt_optimizer/state/app_state.dart';
 import 'package:prompt_optimizer/ui/pages/add_service_dialog.dart';
 import 'package:prompt_optimizer/ui/pages/model_config_page.dart';
-import 'package:prompt_optimizer/ui/pages/workbench_page.dart';
+import 'package:prompt_optimizer/ui/pages/workbench_panel.dart';
 
 import '../cjk_font_helper.dart';
 import '../fakes.dart';
@@ -26,7 +26,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
-    final bytes = await File(fontPath!).readAsBytes();
+    final bytes = await File(fontPath).readAsBytes();
     final loader = FontLoader('NotoCJK')
       ..addFont(Future.value(ByteData.sublistView(bytes)));
     await loader.load();
@@ -48,9 +48,13 @@ void main() {
     tester.view.physicalSize = const Size(1300, 770);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(app(const WorkbenchPage()));
+    // TabView 重构后 WorkbenchPage 顶部含标签条；本 golden 固化的是
+    // 1300×770 画布上的 Panel 像素，直接挂载 Panel 以保持对照一致。
+    // golden 基准为 Linux+NotoSansCJK 宿主（见 cjk_font_helper），
+    // 其他平台的字形栅格化差异不计入对照
+    await tester.pumpWidget(app(WorkbenchPanel(runtime: appState.tabs.activeTab)));
     await tester.pumpAndSettle();
-    await expectLater(find.byType(WorkbenchPage),
+    await expectLater(find.byType(WorkbenchPanel),
         matchesGoldenFile('goldens/layout-fixed-workbench-1300.png'));
   });
 
@@ -102,8 +106,8 @@ void main() {
         testService(id: 'svc-2', provider: 'kimi', model: 'k3', isDefault: false)
             .copyWith(apiUrl: 'https://api.kimi.com/coding/v1'),
         apiKey: 'sk2');
-    await appState.settings
-        .update(appState.settings.settings.copyWith(parallelEnabled: true));
+    // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+    appState.session.parallelEnabled = true;
     appState.session.parallelServiceId = 'svc-2';
     appState.session.rawText = '帮我写个爬虫爬豆瓣电影 Top250';
     appState.session.mode = OptimizeMode.deep;
@@ -113,9 +117,10 @@ void main() {
     tester.view.physicalSize = const Size(1300, 770);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(app(const WorkbenchPage()));
+    // 同上：golden 固化 Panel 像素，直接挂载 Panel 保持对照一致
+    await tester.pumpWidget(app(WorkbenchPanel(runtime: appState.tabs.activeTab)));
     await tester.pumpAndSettle();
-    await expectLater(find.byType(WorkbenchPage),
+    await expectLater(find.byType(WorkbenchPanel),
         matchesGoldenFile('goldens/layout-parallel-compare-1300.png'));
   });
 

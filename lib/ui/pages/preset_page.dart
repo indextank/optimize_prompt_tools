@@ -1,7 +1,7 @@
 /// 「编程预置词」页面：技术背景预置词的列表与增删改。
 ///
 /// 三态覆盖：请求进行中 loading / 请求失败错误+重试 / 无数据空状态；
-/// 新增与编辑共用弹框（名称必填+唯一、内容 ≤300 字）；
+/// 新增与编辑共用弹框（名称必填+唯一、内容 ≤1000 字）；
 /// 删除先弹确认框。数据经 AppState → AppStorage 持久化（名称唯一性与
 /// 长度上限在存储层二次校验）。
 library;
@@ -569,9 +569,9 @@ class _PresetEditDialogState extends State<_PresetEditDialog> {
         ),
         const SizedBox(height: 4),
         Row(children: [
-          const Expanded(
-            child: Text('内容超过 300 字禁止输入',
-                style: TextStyle(fontSize: 14, color: AppTokens.text3)),
+          Expanded(
+            child: Text('内容超过 ${CodingPreset.maxContentChars} 字禁止输入',
+                style: const TextStyle(fontSize: 14, color: AppTokens.text3)),
           ),
           Text('${_contentCtrl.text.length}/${CodingPreset.maxContentChars}',
               style:

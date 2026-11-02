@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:prompt_optimizer/core/errors.dart';
 import 'package:prompt_optimizer/core/models.dart';
 import 'package:prompt_optimizer/services/optimize_engine.dart';
+import 'package:prompt_optimizer/state/workbench_tabs.dart';
 
 import '../fakes.dart';
 
@@ -307,7 +308,8 @@ void main() {
       final rec = await fut;
       expect(rec, isNull);
       expect(state.session.optimizing, isFalse);
-      expect(state.session.errorMessage, isNull); // 取消不算错误
+      expect(state.session.status, OptimizationRunStatus.error);
+      expect(state.session.errorMessage, '请求已取消，已保留接收内容');
     });
   });
 }

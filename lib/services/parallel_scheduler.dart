@@ -45,6 +45,35 @@ class ParallelAllDone extends ParallelEvent {
   final List<ParallelRunState> states;
 }
 
+/// 一次并行运行的句柄，用于读取事件与状态并统一取消。
+class ParallelRunHandle {
+  ParallelRunHandle({
+    required this.events,
+    required this.states,
+    required this.droppedServices,
+    required this.done,
+    required void Function() onCancel,
+  }) : _onCancel = onCancel;
+
+  final Stream<ParallelEvent> events;
+  final List<ParallelRunState> states;
+  final List<ServiceConfig> droppedServices;
+  final Future<void> done;
+  final void Function() _onCancel;
+  bool _cancelled = false;
+
+  bool get isCancelled => _cancelled;
+
+  void cancel() {
+    if (_cancelled) return;
+    _cancelled = true;
+    for (final state in states) {
+      state.cancelToken.cancel('parallel_cancelled');
+    }
+    _onCancel();
+  }
+}
+
 /// 并行调度器
 class ParallelScheduler {
   ParallelScheduler({required OptimizeEngine engine}) : _engine = engine;
@@ -53,8 +82,8 @@ class ParallelScheduler {
 
   /// 并行运行。[services] 与 [apiKeys] 等长；超出上限的服务商将被丢弃并记入返回值。
   ///
-  /// 返回 (事件流, 被截断丢弃的服务列表)。
-  (Stream<ParallelEvent>, List<ServiceConfig>) run(
+  /// 返回包含事件流、实际运行状态和被截断丢弃服务列表的运行句柄。
+  ParallelRunHandle run(
     List<ServiceConfig> services,
     List<String> apiKeys,
     String rawText, {
@@ -62,7 +91,7 @@ class ParallelScheduler {
     OutputStyle style = OutputStyle.full,
     SceneTemplate scene = kDefaultScene,
     CodingPreset? preset,
-    void Function(String provider, String accumulated)? onItemProgress,
+    void Function(String serviceId, String accumulated)? onItemProgress,
   }) {
     if (services.length != apiKeys.length) {
       throw ArgumentError('services 与 apiKeys 长度不一致');
@@ -76,41 +105,62 @@ class ParallelScheduler {
       for (var i = 0; i < used.length; i++)
         ParallelRunState(service: used[i], apiKey: usedKeys[i])
     ];
+    var cancelled = false;
+    final workerDone = Completer<void>();
+    final handle = ParallelRunHandle(
+      events: controller.stream,
+      states: List.unmodifiable(states),
+      droppedServices: List.unmodifiable(dropped),
+      done: workerDone.future,
+      onCancel: () {
+        cancelled = true;
+        if (!controller.isClosed) unawaited(controller.close());
+      },
+    );
 
     Future(() async {
-      await Future.wait(states.map((st) async {
-        final sw = Stopwatch()..start();
-        try {
-          final res = await _engine.optimize(
-            st.service,
-            st.apiKey,
-            rawText,
-            mode: mode,
-            style: style,
-            scene: scene,
-            preset: preset,
-            cancelToken: st.cancelToken,
-            onProgress: (t) {
-              st.streamedText = t;
-              onItemProgress?.call(st.service.id, t);
-            },
-          );
-          st.runResult = res;
-        } catch (e) {
-          st.error = e;
-        } finally {
-          sw.stop();
-          st.elapsedMs = sw.elapsedMilliseconds;
-          st.done = true;
-          if (!controller.isClosed) controller.add(ParallelItemDone(st));
+      try {
+        await Future.wait(states.map((st) async {
+          final sw = Stopwatch()..start();
+          try {
+            final res = await _engine.optimize(
+              st.service,
+              st.apiKey,
+              rawText,
+              mode: mode,
+              style: style,
+              scene: scene,
+              preset: preset,
+              cancelToken: st.cancelToken,
+              onProgress: (t) {
+                if (cancelled || controller.isClosed) return;
+                st.streamedText = t;
+                onItemProgress?.call(st.service.id, t);
+              },
+            );
+            if (!cancelled) st.runResult = res;
+          } catch (e) {
+            if (!cancelled) st.error = e;
+          } finally {
+            sw.stop();
+            if (!cancelled) {
+              st.elapsedMs = sw.elapsedMilliseconds;
+              st.done = true;
+              if (!controller.isClosed) {
+                controller.add(ParallelItemDone(st));
+              }
+            }
+          }
+        }));
+        if (!cancelled && !controller.isClosed) {
+          controller.add(ParallelAllDone(List.unmodifiable(states)));
+          unawaited(controller.close());
         }
-      }));
-      if (!controller.isClosed) {
-        controller.add(ParallelAllDone(List.unmodifiable(states)));
-        await controller.close();
+      } finally {
+        if (!workerDone.isCompleted) workerDone.complete();
       }
     });
 
-    return (controller.stream, dropped);
+    return handle;
   }
 }

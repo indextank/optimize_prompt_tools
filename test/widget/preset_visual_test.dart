@@ -25,7 +25,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
-    final bytes = await File(fontPath!).readAsBytes();
+    final bytes = await File(fontPath).readAsBytes();
     final loader = FontLoader('NotoCJK')
       ..addFont(Future.value(ByteData.sublistView(bytes)));
     await loader.load();
@@ -37,8 +37,9 @@ void main() {
         home: child,
       );
 
+  // 布局 golden 不校验日期；0 固定显示为「—」，避免宿主时区改变渲染像素。
   CodingPreset p(String id, String name, String content) =>
-      CodingPreset(id: id, name: name, content: content, createdAt: 1700000000);
+      CodingPreset(id: id, name: name, content: content, createdAt: 0);
 
   testWidgets('预置词列表 1300×770（内容列加宽/操作右对齐/长短内容混排）',
       (tester) async {

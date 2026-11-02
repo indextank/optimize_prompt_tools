@@ -60,7 +60,7 @@ void main() {
     });
   });
 
-  group('① 并行对比开关（工作台）设置持久化', () {
+  group('① 并行对比开关（工作台）运行时状态（新语义：只写 tab，不写全局设置）', () {
     testWidgets('运行时开关联动；重载（模拟重启）后默认关闭', (tester) async {
       await appState.saveService(testService(), apiKey: 'sk');
       await appState.saveService(
@@ -70,13 +70,17 @@ void main() {
       expect(appState.settings.settings.parallelEnabled, isFalse);
       await tester.tap(find.text('并行对比'));
       await tester.pumpAndSettle();
-      expect(appState.settings.settings.parallelEnabled, isTrue);
+      // 新语义：开关写入 tab（会话）状态，不再更新全局 settings
+      expect(appState.session.parallelEnabled, isTrue);
+      expect(appState.settings.settings.parallelEnabled, isFalse,
+          reason: '开关不再更新全局 settings');
       final reloaded = await SettingsService.load(appState.storage);
       // 新语义（覆盖旧持久化行为）：每次运行软件默认关闭，不沿用上次开启状态
       expect(reloaded.settings.parallelEnabled, isFalse,
           reason: '重新加载（模拟重启）默认关闭，不沿用上次开启状态');
       await tester.tap(find.text('并行对比'));
       await tester.pumpAndSettle();
+      expect(appState.session.parallelEnabled, isFalse);
       expect(appState.settings.settings.parallelEnabled, isFalse);
     });
   });
@@ -92,8 +96,9 @@ void main() {
       UpdateService.debugOverride = () => _FakeLatestService();
       await pumpAt(tester, const PromptOptimizerApp(), 1440, 900);
       expect(find.text('提示词优化工具'), findsWidgets); // 导航底部版本模块
-      expect(find.text('v1.0.0 · Build 1'), findsOneWidget);
+      expect(find.text('v1.0.0'), findsOneWidget);
       expect(find.text('检查更新'), findsOneWidget);
+      expect(find.textContaining('· Build'), findsNothing);
       expect(find.textContaining('Win / Linux / Android'), findsNothing);
     });
 

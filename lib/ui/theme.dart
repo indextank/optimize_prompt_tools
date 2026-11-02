@@ -57,6 +57,33 @@ abstract final class AppTokens {
   static const Color warning = Color(0xFFD97706);
   static const Color danger = Color(0xFFD13438);
 
+  // ---------------- TabView 标签（浅色桌面 Fluent 风格） ----------------
+  // fluent 默认标签色是半透明 Mica 层（layerOnMicaBaseAltFillColor*），
+  // 叠在未绘制区域（引擎黑底）上会形成黑底黑字；此处显式浅色令牌，
+  // 保证「激活白卡 / 非激活浅灰深字」，与 _SceneChip/_ModeSegment 的
+  // 浅色硬编码视觉语言一致。
+  /// 激活 tab 背景：白卡
+  static final WidgetStateColor tabSelectedBg =
+      WidgetStateColor.resolveWith((states) => cardBg);
+
+  /// 非激活 tab 背景：浅灰（hover/pressed 微调）
+  static final WidgetStateColor tabBg = WidgetStateColor.resolveWith((states) {
+    if (states.contains(WidgetState.pressed)) return const Color(0xFFE4E7EB);
+    if (states.contains(WidgetState.hovered)) return const Color(0xFFF0F1F3);
+    return const Color(0xFFE8EAED);
+  });
+
+  /// 激活 tab 文字：深色（白卡上高对比）
+  static final WidgetStateColor tabSelectedFg =
+      WidgetStateColor.resolveWith((states) => text);
+
+  /// 非激活 tab 文字：深灰（hover 加深、disabled 提亮）
+  static final WidgetStateColor tabFg = WidgetStateColor.resolveWith((states) {
+    if (states.contains(WidgetState.disabled)) return text3;
+    if (states.contains(WidgetState.hovered)) return text;
+    return text2;
+  });
+
   static const double cardRadius = 8;
 
   // ---------------- 全局间距规范（统一刻度，禁止零散硬编码） ----------------

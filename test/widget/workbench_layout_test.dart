@@ -242,8 +242,8 @@ void main() {
     await appState.saveService(
         testService(id: 'svc-2', provider: 'kimi', model: 'k3', isDefault: false),
         apiKey: 'sk2');
-    await appState.settings
-        .update(appState.settings.settings.copyWith(parallelEnabled: true));
+    // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+    appState.session.parallelEnabled = true;
     appState.session.parallelServiceId = 'svc-2';
     appState.session.rawText = '原文';
     appState.session.mode = OptimizeMode.deep;
@@ -263,8 +263,8 @@ void main() {
     await appState.saveService(
         testService(id: 'svc-2', provider: 'kimi', model: 'k3', isDefault: false),
         apiKey: 'sk2');
-    await appState.settings
-        .update(appState.settings.settings.copyWith(parallelEnabled: true));
+    // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+    appState.session.parallelEnabled = true;
     appState.session.parallelServiceId = 'svc-2';
     appState.session.rawText = '原文';
     appState.session.mode = OptimizeMode.quick;
@@ -307,8 +307,8 @@ void main() {
     await appState.saveService(
         testService(id: 'svc-2', provider: 'kimi', model: 'k3', isDefault: false),
         apiKey: 'sk2');
-    await appState.settings
-        .update(appState.settings.settings.copyWith(parallelEnabled: true));
+    // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+    appState.session.parallelEnabled = true;
     appState.session.parallelServiceId = 'svc-2';
     appState.session.rawText = '原文';
     appState.session.mode = OptimizeMode.deep;
@@ -393,8 +393,8 @@ void main() {
     await appState.saveService(
         testService(id: 'svc-2', provider: 'kimi', model: 'k3', isDefault: false),
         apiKey: 'sk2');
-    await appState.settings
-        .update(appState.settings.settings.copyWith(parallelEnabled: true));
+    // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+    appState.session.parallelEnabled = true;
     await pumpPage(tester);
     expect(find.text('选择对比模型后并行生效'), findsOneWidget);
   });

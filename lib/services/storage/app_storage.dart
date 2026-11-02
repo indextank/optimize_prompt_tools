@@ -34,7 +34,7 @@ abstract class AppStorage {
   Future<void> saveTemplate(SceneTemplate template);
   Future<void> deleteTemplate(String id);
 
-  // ---- 编程预置词（技术背景；校验：名称必填/唯一、内容 ≤300 字） ----
+  // ---- 编程预置词（技术背景；校验：名称必填/唯一、内容 ≤1000 字） ----
   Future<List<CodingPreset>> loadPresets();
 
   /// 新增或按 id 覆盖（编辑）；校验失败抛 [FormatException]

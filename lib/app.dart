@@ -200,7 +200,7 @@ class _VersionBlock extends StatefulWidget {
 }
 
 class _VersionBlockState extends State<_VersionBlock> {
-  String? _versionLabel; // 展示标签：v1.0.0 · Build 1
+  String? _versionLabel; // 展示标签：v1.0.0（不拼 Build 号）
   String _rawVersion = '0.0.0'; // 比较用原始版本号（来自构建元数据）
   bool _checking = false;
 
@@ -215,10 +215,10 @@ class _VersionBlockState extends State<_VersionBlock> {
     var raw = _rawVersion;
     try {
       final info = await PackageInfo.fromPlatform();
-      label = 'v${info.version} · Build ${info.buildNumber}';
+      label = 'v${info.version}';
       raw = info.version;
     } catch (_) {
-      label = 'v- · Build -'; // 构建元数据不可用（如测试环境未 mock）
+      label = 'v-'; // 构建元数据不可用（如测试环境未 mock）
     }
     if (mounted) {
       setState(() {

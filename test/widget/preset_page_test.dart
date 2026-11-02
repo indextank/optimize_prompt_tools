@@ -1,6 +1,6 @@
 /// 「编程预置词」页面 Widget 测试：
 /// - 三态：loading / 空状态 / 列表数据；请求失败展示错误+重试
-/// - 新增弹框：名称必填、名称唯一性、内容 300 字上限、保存成功刷新
+/// - 新增弹框：名称必填、名称唯一性、内容 1000 字上限、保存成功刷新
 /// - 编辑与新增共用弹框（回填 + 保存更新）
 /// - 删除：二次确认，取消不删、确认后删
 library;
@@ -112,15 +112,15 @@ void main() {
       expect(find.textContaining('已存在'), findsOneWidget);
     });
 
-    testWidgets('内容 300 字上限：输入被限制 + 保存成功刷新列表', (tester) async {
+    testWidgets('内容 1000 字上限：输入被限制 + 保存成功刷新列表', (tester) async {
       await pumpPage(tester);
       await tester.tap(find.text('＋ 新增'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextBox).at(0), '长内容');
-      await tester.enterText(find.byType(TextBox).at(1), '字' * 300);
+      // 超上限输入：输入格式化器截断到 1000，计数器同步显示 1000/1000
+      await tester.enterText(find.byType(TextBox).at(1), '字' * 1200);
       await tester.pump();
-      // 字数计数器显示 300/300
-      expect(find.text('300/300'), findsOneWidget);
+      expect(find.text('1000/1000'), findsOneWidget);
       await tester.tap(find.text('新增'));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();

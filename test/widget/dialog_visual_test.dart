@@ -25,7 +25,7 @@ void main() {
 
   // 加载真实 CJK 字体（测试默认 Ahem 字体会把文字渲染成黑条）
   setUpAll(() async {
-    final bytes = await File(fontPath!).readAsBytes();
+    final bytes = await File(fontPath).readAsBytes();
     final loader = FontLoader('NotoCJK')
       ..addFont(Future.value(ByteData.sublistView(bytes)));
     await loader.load();

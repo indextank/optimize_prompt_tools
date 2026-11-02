@@ -172,7 +172,7 @@ void main() {
       await openDialog(tester);
       for (final text in [
         '技术背景仅作为优化上下文，不会作为待优化内容',
-        '内容超过 300 字禁止输入',
+        '内容超过 1000 字禁止输入',
       ]) {
         final t = tester.widget<Text>(find.text(text));
         expect(t.style?.fontSize, 14, reason: '「$text」字号应为 14');

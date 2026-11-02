@@ -35,7 +35,7 @@ void main() {
   late FakeLlmClient llm;
 
   setUpAll(() async {
-    final bytes = await File(fontPath!).readAsBytes();
+    final bytes = await File(fontPath).readAsBytes();
     final loader = FontLoader('NotoCJK')
       ..addFont(Future.value(ByteData.sublistView(bytes)));
     await loader.load();
@@ -123,8 +123,8 @@ void main() {
         // 会话模型下拉已移除；开启并行后头部出现对比模型下拉，同样不得出界
         await appState.saveService(
             testService(id: 'z', provider: 'zhipu', model: 'glm-4.6'), apiKey: 'sk2');
-        await appState.settings.update(
-            appState.settings.settings.copyWith(parallelEnabled: true));
+        // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+        appState.session.parallelEnabled = true;
         appState.session.parallelServiceId = 'z';
         await tester.pumpWidget(app(const WorkbenchPage()));
         await tester.pumpAndSettle();

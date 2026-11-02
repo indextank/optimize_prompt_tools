@@ -5,6 +5,8 @@ import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:prompt_optimizer/core/models.dart';
 import 'package:prompt_optimizer/state/app_state.dart';
+import 'package:prompt_optimizer/state/workbench_tabs.dart'
+    show OptimizationRunStatus;
 import 'package:prompt_optimizer/ui/pages/history_page.dart';
 
 import '../fakes.dart';
@@ -168,9 +170,21 @@ void main() {
   testWidgets('打开记录回填会话', (tester) async {
     await seed();
     await pumpPage(tester);
+    final originalTab = appState.tabs.activeTab;
     await tester.tap(find.text('打开').first);
     await tester.pumpAndSettle();
     expect(appState.session.currentRecord, isNotNull);
     expect(appState.session.rawText, isNotEmpty);
+    // openRecord 新建并激活独立 tab；复查读取 active 新 tab 的回填值
+    expect(appState.tabs.tabs, hasLength(2));
+    expect(appState.tabs.activeTab, isNot(same(originalTab)));
+    final active = appState.tabs.activeTab.state;
+    expect(active.rawText, isNotEmpty);
+    expect(active.sceneId, active.currentRecord!.scene);
+    expect(active.mode, active.currentRecord!.mode);
+    expect(active.status, OptimizationRunStatus.success);
+    expect(appState.tabs.activeTab.controller.text, active.rawText);
+    // 原 tab 输入未被覆盖
+    expect(originalTab.state.rawText, isEmpty);
   });
 }

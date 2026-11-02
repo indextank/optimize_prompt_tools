@@ -72,8 +72,10 @@ void main() {
 
     testWidgets('仅 1 个服务：开关锁定为不可开启（即使设置曾被开启）', (tester) async {
       await addService('a');
+      // 全局设置曾被开启 + 该 tab 开关曾被开启：均不得绕过 <2 服务锁定
       await appState.settings.update(
           appState.settings.settings.copyWith(parallelEnabled: true));
+      appState.session.parallelEnabled = true;
       await pumpBench(tester);
       final t = parallelToggle(tester);
       expect(t.onChanged, isNull, reason: '仅 1 个可用模型时开关必须锁定');
@@ -94,8 +96,8 @@ void main() {
     testWidgets('从 2 个删到 1 个：开关自动回到锁定+提示', (tester) async {
       await addService('a');
       await addService('b', provider: 'kimi', model: 'k3');
-      await appState.settings.update(
-          appState.settings.settings.copyWith(parallelEnabled: true));
+      // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+      appState.session.parallelEnabled = true;
       appState.session.parallelServiceId = 'b';
       await pumpBench(tester);
       expect(parallelToggle(tester).onChanged, isNotNull);
@@ -112,8 +114,8 @@ void main() {
     testWidgets('并行开启时禁用开关和对比模型下拉，完成后恢复', (tester) async {
       await addService('a');
       await addService('b', provider: 'kimi', model: 'k3');
-      await appState.settings.update(
-          appState.settings.settings.copyWith(parallelEnabled: true));
+      // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+      appState.session.parallelEnabled = true;
       appState.session.parallelServiceId = 'b';
       appState.session.rawText = '原文';
       llm.enqueueText(kValidContractJson);
@@ -192,8 +194,8 @@ void main() {
       await addService('a', isDefault: true); // 生效服务 deepseek-flash
       await addService('b', provider: 'kimi', model: 'k3');
       await addService('c', provider: 'zhipu', model: 'glm-4.6');
-      await appState.settings.update(
-          appState.settings.settings.copyWith(parallelEnabled: true));
+      // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+      appState.session.parallelEnabled = true;
       await pumpBench(tester);
       // 展开下拉
       await tester.tap(find.text('选择对比模型'));
@@ -217,8 +219,8 @@ void main() {
     testWidgets('已开启但未选择：显示「选择对比模型后并行生效」提示', (tester) async {
       await addService('a');
       await addService('b', provider: 'kimi', model: 'k3');
-      await appState.settings.update(
-          appState.settings.settings.copyWith(parallelEnabled: true));
+      // 并行开关为 tab 级状态：直接开启当前 tab 的并行（不再写全局 settings）
+      appState.session.parallelEnabled = true;
       await pumpBench(tester);
       expect(find.text('选择对比模型后并行生效'), findsOneWidget);
       expect(appState.parallelCandidateCount, 1);
