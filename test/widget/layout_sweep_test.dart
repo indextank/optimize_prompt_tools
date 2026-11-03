@@ -192,9 +192,9 @@ void main() {
       final gap = dialogRect.right - refreshBtn.right;
       expect(gap, greaterThanOrEqualTo(12),
           reason: '右侧控件与弹窗边缘间距 $gap < 12px');
-      // 「显示密码」复选框文字也不越界
-      final showKey = rectOf(tester, find.text('显示密码'));
-      expect(dialogRect.right - showKey.right, greaterThanOrEqualTo(12));
+      // API KEY 输入框内的眼睛按钮也不越界
+      final eye = rectOf(tester, find.byTooltip('显示密码'));
+      expect(dialogRect.right - eye.right, greaterThanOrEqualTo(12));
     });
 
     testWidgets('长内容滚动后右侧仍保车道（撑出滚动条场景）', (tester) async {

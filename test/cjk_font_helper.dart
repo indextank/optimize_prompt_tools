@@ -1,8 +1,15 @@
-/// Resolve the Noto CJK font used to generate committed goldens.
+/// 视觉 golden 基线字体解析。
 ///
-/// Golden images in this repo were produced with Noto Sans CJK on Linux.
-/// Windows system fonts (msyh/simhei) will not match those goldens, so visual
-/// suites must skip unless the same Noto path is present.
+/// 运行时字体策略（见 `lib/ui/theme.dart`）：
+/// - Windows：Microsoft YaHei UI（微软雅黑，缺失回退 Microsoft YaHei/SimSun）
+/// - Linux：Noto Sans CJK SC（缺失回退其它 Noto CJK / 思源黑体）
+/// - macOS：PingFang SC
+///
+/// 已提交的 golden 全部由 **Linux + Noto Sans CJK** 生成。Windows 运行时
+/// 使用微软雅黑，字形度量与 Noto 不同；若在 Windows 上直接比较 Noto golden
+/// 会得到假失败，因此此处仍只返回 Noto 路径，字体不匹配时跳过视觉套件。
+/// 需要真机字体度量但不比对 golden 的用例（如 RenderFlex 溢出回归）应自行
+/// 加载微软雅黑（见 workbench_screenshot_regression_test.dart）。
 library;
 
 import 'dart:io';

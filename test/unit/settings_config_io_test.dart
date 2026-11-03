@@ -32,10 +32,11 @@ void main() {
       expect(
           settings.keys.toSet(),
           {
-            'theme_mode', 'language', 'auto_start', 'hotkey', 'floating_ball',
-            'default_mode', 'default_scene', 'result_language', 'auto_copy',
-            'retention_days', 'proxy_mode', 'proxy_url', 'timeout_secs',
-            'parallel_enabled', 'default_service_id',
+            'theme_mode', 'language', 'auto_start', 'hotkey',
+            'optimize_hotkey', 'default_mode', 'default_scene',
+            'result_language', 'auto_copy', 'retention_days', 'proxy_mode',
+            'proxy_url', 'timeout_secs', 'parallel_enabled',
+            'default_service_id',
           });
       // 与当前设置值一致
       expect(settings['timeout_secs'], state.settings.settings.timeoutSecs);
@@ -57,7 +58,7 @@ void main() {
         'language': 'en_US',
         'auto_start': true,
         'hotkey': 'Alt+Shift+P',
-        'floating_ball': true,
+        'optimize_hotkey': 'Alt+Enter',
         'default_mode': 'deep',
         'default_scene': 'writing',
         'result_language': 'zh',
@@ -75,7 +76,7 @@ void main() {
       expect(s.language, 'en_US');
       expect(s.autoStart, isTrue);
       expect(s.hotkey, 'Alt+Shift+P');
-      expect(s.floatingBall, isTrue);
+      expect(s.optimizeHotkey, 'Alt+Enter');
       expect(s.defaultMode.name, 'deep');
       expect(s.defaultScene, 'writing');
       expect(s.resultLanguage, 'zh');

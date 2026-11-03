@@ -59,6 +59,18 @@ const List<String> kProviderList = [
   'minimax',
 ];
 
+/// 自定义服务商：地址、模型、密钥全部由用户手动输入，不预置任何默认值。
+const String kCustomProvider = 'custom';
+const ProviderConfig kCustomProviderConfig = ProviderConfig(
+  id: kCustomProvider,
+  name: '自定义',
+  nameEn: 'Custom',
+  defaultUrl: '',
+  apiUrlOptions: [],
+  models: [],
+  defaultModel: '',
+);
+
 /// 九家国内主流大模型服务商配置表
 const Map<String, ProviderConfig> kProviderConfigs = {
   'doubao': ProviderConfig(
@@ -188,6 +200,8 @@ const Map<String, ProviderConfig> kProviderConfigs = {
     defaultModel: 'MiniMax-M3',
     supportsModelListApi: true,
   ),
+  // 自定义服务商：用户自行填写 URL / 模型 / Key
+  kCustomProvider: kCustomProviderConfig,
 };
 
 /// 按提供商标识获取配置；未知标识返回 null

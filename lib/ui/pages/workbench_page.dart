@@ -8,9 +8,13 @@
 /// WorkbenchPanel 的 State 被销毁（SSE 流中断、输入状态丢失）。
 library;
 
+import 'dart:async';
+
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 
+import '../../core/shortcuts.dart';
 import '../../state/app_state.dart';
 import '../../state/workbench_tabs.dart' show WorkbenchTabRuntime;
 import '../theme.dart';
@@ -35,6 +39,12 @@ class _WorkbenchPageState extends State<WorkbenchPage>
   ///    WorkbenchTabRuntime 终身一一绑定，只需增删、无需更新。
   final Map<String, Tab> _tabCache = <String, Tab>{};
 
+  /// 每个 tab 的 body 保持器（跨主题重建 Tab 壳时接管旧面板 State）。
+  final Map<String, GlobalKey> _bodyKeys = <String, GlobalKey>{};
+
+  /// 上次构建时的亮度：变化即清空 [_tabCache]，让标签配色按新主题重建。
+  Brightness? _cachedBrightness;
+
   /// 标签条滚动控制器：TabView 内置滚轮/翻页按钮与鼠标拖拽平移共用。
   /// 外部持有（TabView 不会释放外部 controller），由本 State 释放。
   final ScrollPosController _stripScroll = ScrollPosController(
@@ -50,13 +60,85 @@ class _WorkbenchPageState extends State<WorkbenchPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    HardwareKeyboard.instance.addHandler(_handleShortcut);
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleShortcut);
     WidgetsBinding.instance.removeObserver(this);
     _stripScroll.dispose();
     super.dispose();
+  }
+
+  /// 应用内可配置快捷键：快速优化 / 关闭标签 / 新建标签。
+  ///
+  /// 仅在工作台可见且没有对话框时消费；返回 true 阻止事件继续分发。
+  bool _handleShortcut(KeyEvent event) {
+    if (event is! KeyDownEvent || !mounted) return false;
+    if (Navigator.of(context).canPop()) return false;
+
+    final settings = appState.settings.settings;
+    final tabs = appState.tabs;
+
+    final optimize = ShortcutBinding.tryParse(settings.optimizeHotkey);
+    if (optimize != null &&
+        optimize.matches(event) &&
+        appState.canOptimizeFor(tabs.activeTab.state.id)) {
+      unawaited(appState.startOptimize(tabId: tabs.activeTab.state.id));
+      return true;
+    }
+
+    final close = ShortcutBinding.tryParse(kCloseTabShortcut);
+    if (close != null && close.matches(event)) {
+      if (tabs.activeIndex > 0) {
+        tabs.closeTab(tabs.activeTab.state.id);
+        return true;
+      }
+      return false;
+    }
+
+    final newTab = ShortcutBinding.tryParse(kNewTabShortcut);
+    if (newTab != null && newTab.matches(event)) {
+      tabs.addTab();
+      return true;
+    }
+
+    // 保留 TabView 原有的 Ctrl+1..9 切换能力（固定快捷键，不提供配置）。
+    if (_isPlainControl(event)) {
+      final index = _digitTabIndex(event.logicalKey);
+      if (index != null) {
+        final last = tabs.tabs.length - 1;
+        final target = index == 8 ? last : (index <= last ? index : last);
+        tabs.switchTab(target);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _isPlainControl(KeyEvent event) {
+    final hardware = HardwareKeyboard.instance;
+    return hardware.isControlPressed &&
+        !hardware.isAltPressed &&
+        !hardware.isShiftPressed &&
+        !hardware.isMetaPressed;
+  }
+
+  int? _digitTabIndex(LogicalKeyboardKey key) {
+    const digits = [
+      LogicalKeyboardKey.digit1,
+      LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3,
+      LogicalKeyboardKey.digit4,
+      LogicalKeyboardKey.digit5,
+      LogicalKeyboardKey.digit6,
+      LogicalKeyboardKey.digit7,
+      LogicalKeyboardKey.digit8,
+      LogicalKeyboardKey.digit9,
+    ];
+    final index = digits.indexOf(key);
+    return index < 0 ? null : index;
   }
 
   @override
@@ -85,21 +167,30 @@ class _WorkbenchPageState extends State<WorkbenchPage>
     final id = runtime.state.id;
     return _tabCache.putIfAbsent(id, () {
       final closable = index > 0;
+      // body 以 GlobalKey 跨主题重建保留 State：主题切换时 Tab 的
+      // WidgetStateColor 需按新亮度重建（Tab 不可变），若 body 仅靠
+      // ValueKey<Tab> 会被一并销毁（SSE 中断、输入丢失）。GlobalKey 让
+      // 新 Tab 壳接管旧面板 State，只换配色不换内容。
+      final bodyKey = _bodyKeys.putIfAbsent(id, () => GlobalKey());
       return Tab(
         closeIcon: null, // 隐藏内置 x，改用标题行内自定义关闭按钮
         onClosed: closable ? () => appState.tabs.closeTab(id) : null,
-        // 显式浅色标签配色（AppTokens 令牌）：fluent 默认为半透明 Mica 层，
-        // 透明标签叠在未绘制区域（引擎黑底）上会黑底黑字。激活=白卡、
-        // 非激活=浅灰深字，标题/关闭按钮文字经 DefaultTextStyle 继承同一前景色。
-        backgroundColor: AppTokens.tabBg,
-        foregroundColor: AppTokens.tabFg,
-        selectedBackgroundColor: AppTokens.tabSelectedBg,
-        selectedForegroundColor: AppTokens.tabSelectedFg,
+        // 显式标签配色（AppColors 令牌）：fluent 默认为半透明 Mica 层，
+        // 透明标签叠在未绘制区域（引擎黑底）上会黑底黑字。激活=卡片表面、
+        // 非激活=次级表面，标题/关闭按钮文字经 DefaultTextStyle 继承同一前景色。
+        // 亮度切换时 [_tabCache] 整体失效重建（见 build），保证不残留旧主题色。
+        backgroundColor: context.colors.tabBackground,
+        foregroundColor: context.colors.tabForeground,
+        selectedBackgroundColor: context.colors.tabSelectedBackground,
+        selectedForegroundColor: context.colors.tabSelectedForeground,
         // 不设 semanticLabel：Tab 实例被缓存，label 会冻结在创建时的标题，
         // 改名后成为过期的可访问性标签（比没有更糟）。标题的语义/提示由
         // [_TabTitle] 内的 Tooltip 随 runtime.state.title 实时重建。
         text: _TabTitle(runtime: runtime, closable: closable),
-        body: WorkbenchPanel(key: ValueKey(id), runtime: runtime),
+        body: KeyedSubtree(
+          key: bodyKey,
+          child: WorkbenchPanel(key: ValueKey(id), runtime: runtime),
+        ),
       );
     });
   }
@@ -109,9 +200,15 @@ class _WorkbenchPageState extends State<WorkbenchPage>
     return ListenableBuilder(
       listenable: appState,
       builder: (context, _) {
+        final brightness = FluentTheme.of(context).brightness;
+        if (_cachedBrightness != brightness) {
+          _cachedBrightness = brightness;
+          _tabCache.clear();
+        }
         final tabs = appState.tabs.tabs;
         // 移除已关闭 tab 的缓存（其 Tab 实例随之销毁，body State 一并释放）
         _tabCache.removeWhere((id, _) => tabs.every((r) => r.state.id != id));
+        _bodyKeys.removeWhere((id, _) => tabs.every((r) => r.state.id != id));
         final tabList = [
           for (var i = 0; i < tabs.length; i++) _buildTab(i, tabs[i]),
         ];
@@ -133,7 +230,9 @@ class _WorkbenchPageState extends State<WorkbenchPage>
                 onNewPressed: appState.tabs.addTab,
                 tabWidthBehavior: TabWidthBehavior.sizeToContent,
                 showScrollButtons: true,
-                shortcutsEnabled: true,
+                // 快捷键由页面统一处理（可在设置中修改），禁用 TabView
+                // 内置绑定以免同一次按键触发两次关闭/新建。
+                shortcutsEnabled: false,
                 scrollController: _stripScroll,
                 tabs: tabList,
                 // 标签条显式浅色背景（同 scaffold 底色）+ 鼠标拖拽平移由内层

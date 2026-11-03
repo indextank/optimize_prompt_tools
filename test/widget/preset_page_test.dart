@@ -129,6 +129,17 @@ void main() {
       expect(find.text('长内容'), findsOneWidget);
     });
 
+    testWidgets('打开新增弹框时名称输入框自动获得焦点', (tester) async {
+      await pumpPage(tester);
+      await tester.tap(find.text('＋ 新增'));
+      await tester.pumpAndSettle();
+
+      final nameBox = tester.widget<TextBox>(find.byType(TextBox).first);
+      expect(nameBox.autofocus, isTrue);
+      expect(nameBox.focusNode?.hasFocus, isTrue,
+          reason: '弹框打开后光标应默认在名称输入框');
+    });
+
     testWidgets('编辑共用弹框：回填旧值并保存更新', (tester) async {
       await appState.savePreset(CodingPreset(
           id: 'p1', name: '桌面端', content: '旧内容', createdAt: 1700000000));

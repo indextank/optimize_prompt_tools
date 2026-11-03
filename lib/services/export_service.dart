@@ -50,7 +50,7 @@ abstract class FileSaver {
 }
 
 class ExportService {
-  ExportService({required FileSaver fileSaver}) : _fileSaver = fileSaver;
+  ExportService({required this._fileSaver});
 
   final FileSaver _fileSaver;
 

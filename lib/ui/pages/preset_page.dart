@@ -61,17 +61,19 @@ class _PresetPageState extends State<PresetPage> {
               EdgeInsets.fromLTRB(compact ? 14 : 26, 14, compact ? 14 : 26, 12),
           content: ListView(children: [
             Row(children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('编程预置词',
                           style: TextStyle(
-                              fontSize: 22, fontWeight: FontWeight.w600)),
+                              fontSize: 22,
+                              fontWeight: FontWeight.w600,
+                              color: context.colors.textPrimary)),
                       SizedBox(height: 4),
                       Text('预置技术背景（平台 / 编程语言 / 技术架构等），优化时为 AI 提供上下文',
                           style:
-                              TextStyle(fontSize: 12.5, color: AppTokens.text3)),
+                              TextStyle(fontSize: 12.5, color: context.colors.textTertiary)),
                     ]),
               ),
               FilledButton(
@@ -123,6 +125,7 @@ class _PresetPageState extends State<PresetPage> {
   /// 新增/编辑共用弹框；[preset] 为 null 表示新增
   Future<void> _showEditDialog(CodingPreset? preset) async {
     await showDialog<void>(
+      barrierColor: context.colors.overlay,
       context: context,
       builder: (_) => _PresetEditDialog(preset: preset),
     );
@@ -132,6 +135,7 @@ class _PresetPageState extends State<PresetPage> {
 
   Future<void> _confirmDelete(CodingPreset preset) async {
     final confirmed = await showDialog<bool>(
+      barrierColor: context.colors.overlay,
       context: context,
       builder: (ctx) => ContentDialog(
         title: const Text('删除预置词'),
@@ -237,7 +241,7 @@ class _LongContentDropdownState extends State<_LongContentDropdown> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
-            border: Border.all(color: AppTokens.border),
+            border: Border.all(color: context.colors.border),
             borderRadius: BorderRadius.circular(4),
             color: theme.resources.controlFillColorDefault,
           ),
@@ -245,10 +249,10 @@ class _LongContentDropdownState extends State<_LongContentDropdown> {
             Expanded(
               child: Text('内容共 ${widget.lines} 行 · 点击下拉查看完整内容',
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 12, color: AppTokens.text3)),
+                  style:  TextStyle(
+                      fontSize: 12, color: context.colors.textTertiary)),
             ),
-            const Text('▾', style: TextStyle(fontSize: 11, color: AppTokens.text3)),
+            Text('▾', style: TextStyle(fontSize: 11, color: context.colors.textTertiary)),
           ]),
         ),
       ),
@@ -261,7 +265,7 @@ class _HeadText extends StatelessWidget {
   final String text;
   @override
   Widget build(BuildContext context) => Text(text,
-      style: const TextStyle(fontSize: 12, color: AppTokens.text3));
+      style:  TextStyle(fontSize: 12, color: context.colors.textTertiary));
 }
 
 /// 宽屏四列行（名称/内容/创建日期/操作，与表头同栅格）
@@ -292,8 +296,8 @@ class _TableRow extends StatelessWidget {
         Expanded(
           flex: 2,
           child: Text(_fmtDate(preset.createdAt),
-              style: const TextStyle(
-                  fontSize: 12, color: AppTokens.text3)),
+              style:  TextStyle(
+                  fontSize: 12, color: context.colors.textTertiary)),
         ),
         Expanded(
           flex: 2,
@@ -309,9 +313,9 @@ class _TableRow extends StatelessWidget {
                 const SizedBox(width: AppTokens.gapXs),
                 Button(
                   onPressed: () => page._confirmDelete(preset),
-                  child: const Text('删除',
+                  child: Text('删除',
                       style: TextStyle(
-                          fontSize: 12.5, color: AppTokens.danger)),
+                          fontSize: 12.5, color: context.colors.danger)),
                 ),
               ]),
         ),
@@ -334,7 +338,7 @@ class _CompactRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: FluentTheme.of(context).resources.cardBackgroundFillColorDefault,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: AppTokens.border),
+        border: Border.all(color: context.colors.border),
       ),
       child:
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -347,7 +351,7 @@ class _CompactRow extends StatelessWidget {
           ),
           Text(_fmtDate(preset.createdAt),
               style:
-                  const TextStyle(fontSize: 11, color: AppTokens.text3)),
+                   TextStyle(fontSize: 11, color: context.colors.textTertiary)),
         ]),
         const SizedBox(height: 6),
         _ContentCell(content: preset.content, maxLines: 6),
@@ -360,9 +364,9 @@ class _CompactRow extends StatelessWidget {
           const SizedBox(width: AppTokens.gapXs),
           Button(
             onPressed: () => page._confirmDelete(preset),
-            child: const Text('删除',
+            child: Text('删除',
                 style:
-                    TextStyle(fontSize: 12.5, color: AppTokens.danger)),
+                    TextStyle(fontSize: 12.5, color: context.colors.danger)),
           ),
         ]),
       ]),
@@ -379,12 +383,12 @@ String _fmtDate(int epochSec) {
 class _EmptyView extends StatelessWidget {
   const _EmptyView();
   @override
-  Widget build(BuildContext context) => const Padding(
+  Widget build(BuildContext context) => Padding(
         padding: EdgeInsets.symmetric(vertical: 60),
         child: Center(
           child: Text('暂无编程预置词\n点击右上角「＋ 新增」创建技术背景预置词',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppTokens.text3, height: 1.8)),
+              style: TextStyle(color: context.colors.textTertiary, height: 1.8)),
         ),
       );
 }
@@ -400,7 +404,7 @@ class _ErrorView extends StatelessWidget {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text(message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppTokens.danger)),
+              style:  TextStyle(color: context.colors.danger)),
           const SizedBox(height: AppTokens.gapM),
           Button(onPressed: onRetry, child: const Text('重试')),
         ]),
@@ -433,6 +437,7 @@ class _PresetEditDialogState extends State<_PresetEditDialog> {
       TextEditingController(text: widget.preset?.name ?? '');
   late final TextEditingController _contentCtrl =
       TextEditingController(text: widget.preset?.content ?? '');
+  final FocusNode _nameFocus = FocusNode();
   bool _saving = false;
   String? _error;
   double _w = defaultWidth;
@@ -444,6 +449,7 @@ class _PresetEditDialogState extends State<_PresetEditDialog> {
   void dispose() {
     _nameCtrl.dispose();
     _contentCtrl.dispose();
+    _nameFocus.dispose();
     super.dispose();
   }
 
@@ -526,12 +532,12 @@ class _PresetEditDialogState extends State<_PresetEditDialog> {
       decoration: BoxDecoration(
         // 不透明白底：资源色 cardBackgroundFillColorDefault 带 96% 透明度，
         // 叠加路由遮罩后弹框显得半透明（用户反馈），改纯色彻底取消透明度
-        color: Colors.white,
+        color: context.colors.surfaceRaised,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTokens.border),
+        border: Border.all(color: context.colors.border),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
+              color: context.colors.shadow,
               blurRadius: 24,
               offset: const Offset(0, 8)),
         ],
@@ -539,15 +545,20 @@ class _PresetEditDialogState extends State<_PresetEditDialog> {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(_isEdit ? '编辑预置词' : '新增预置词',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: context.colors.textPrimary)),
         const SizedBox(height: 4),
-        const Text('技术背景仅作为优化上下文，不会作为待优化内容',
-            style: TextStyle(fontSize: 14, color: AppTokens.text3)),
+        Text('技术背景仅作为优化上下文，不会作为待优化内容',
+            style: TextStyle(fontSize: 14, color: context.colors.textTertiary)),
         const SizedBox(height: 14),
         const Text('名称', style: TextStyle(fontSize: 14)),
         const SizedBox(height: 4),
         TextBox(
           controller: _nameCtrl,
+          focusNode: _nameFocus,
+          autofocus: true,
           placeholder: '例如：Electron + Vue3 桌面端',
           onChanged: (_) => setState(() {}),
         ),
@@ -571,16 +582,16 @@ class _PresetEditDialogState extends State<_PresetEditDialog> {
         Row(children: [
           Expanded(
             child: Text('内容超过 ${CodingPreset.maxContentChars} 字禁止输入',
-                style: const TextStyle(fontSize: 14, color: AppTokens.text3)),
+                style:  TextStyle(fontSize: 14, color: context.colors.textTertiary)),
           ),
           Text('${_contentCtrl.text.length}/${CodingPreset.maxContentChars}',
               style:
-                  const TextStyle(fontSize: 14, color: AppTokens.text3)),
+                   TextStyle(fontSize: 14, color: context.colors.textTertiary)),
         ]),
         if (_error != null) ...[
           const SizedBox(height: AppTokens.gapS),
           Text(_error!,
-              style: const TextStyle(fontSize: 12, color: AppTokens.danger)),
+              style:  TextStyle(fontSize: 12, color: context.colors.danger)),
         ],
         const SizedBox(height: AppTokens.gapM),
         Row(mainAxisAlignment: MainAxisAlignment.end, children: [

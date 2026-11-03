@@ -8,10 +8,12 @@ import 'package:intl/intl.dart';
 
 import '../../core/models.dart';
 import '../../services/export_service.dart';
+import '../../services/global_hotkey_service.dart';
 import '../../services/settings_service.dart';
 import '../../state/app_state.dart';
 import '../file_saver.dart';
 import '../theme.dart';
+import '../widgets/shortcut_recorder.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -162,6 +164,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _clearHistory() async {
     final ok = await showDialog<bool>(
+      barrierColor: context.colors.overlay,
       context: context,
       builder: (ctx) => ContentDialog(
         title: const Text('清空历史记录'),
@@ -188,11 +191,14 @@ class _SettingsPageState extends State<SettingsPage> {
         return ScaffoldPage.withPadding(
           padding: const EdgeInsets.fromLTRB(26, 18, 26, 14),
           content: ListView(children: [
-            const Text('系统设置',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+            Text('系统设置',
+                style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color: context.colors.textPrimary)),
             const SizedBox(height: 4),
-            const Text('外观、优化偏好、网络与数据管理；配置变更即时生效并本地保存',
-                style: TextStyle(fontSize: 12.5, color: AppTokens.text3)),
+            Text('外观、优化偏好、网络与数据管理；配置变更即时生效并本地保存',
+                style: TextStyle(fontSize: 12.5, color: context.colors.textTertiary)),
             const SizedBox(height: 14),
             LayoutBuilder(builder: (context, c) {
               final twoCol = c.maxWidth > 980;
@@ -243,20 +249,43 @@ class _SettingsPageState extends State<SettingsPage> {
               onChanged: (v) => _update((c) => c.copyWith(autoStart: v)),
             )),
         _row('全局唤起热键', '任意界面按下即唤起优化窗口（桌面端；Wayland 下自动降级）',
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              Card(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                child: Text(s.hotkey,
-                    style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w600)),
-              ),
-            ])),
-        _row('桌面悬浮球', '点击快速优化剪贴板文本（Android 需授予悬浮窗权限）',
-            ToggleSwitch(
-              key: const Key('toggle-floatingBall'),
-              checked: s.floatingBall,
-              onChanged: (v) => _update((c) => c.copyWith(floatingBall: v)),
+            ListenableBuilder(
+              listenable: GlobalHotkeyService.instance,
+              builder: (context, _) {
+                final service = GlobalHotkeyService.instance;
+                final statusColor = switch (service.status) {
+                  GlobalHotkeyStatus.registered => context.colors.success,
+                  GlobalHotkeyStatus.conflict ||
+                  GlobalHotkeyStatus.invalid =>
+                    context.colors.danger,
+                  GlobalHotkeyStatus.unsupported => context.colors.warning,
+                  GlobalHotkeyStatus.idle => context.colors.textTertiary,
+                };
+                return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      ShortcutRecorder(
+                        key: const Key('recorder-globalHotkey'),
+                        value: s.hotkey,
+                        onChanged: (v) =>
+                            _update((c) => c.copyWith(hotkey: v)),
+                      ),
+                      if (service.message.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(service.message,
+                              style: TextStyle(
+                                  fontSize: 11, color: statusColor)),
+                        ),
+                    ]);
+              },
             )),
+        _row('快速优化', '工作台内立即优化当前标签', ShortcutRecorder(
+          key: const Key('recorder-optimizeHotkey'),
+          value: s.optimizeHotkey,
+          onChanged: (v) => _update((c) => c.copyWith(optimizeHotkey: v)),
+        )),
       ]);
 
   // ---------------------------------------------------------------- 优化偏好
@@ -381,7 +410,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       textAlign: TextAlign.right,
                       style: TextStyle(
                           fontSize: 11.5,
-                          color: _netOk ? AppTokens.success : AppTokens.danger),
+                          color: _netOk ? context.colors.success : context.colors.danger),
                     ),
                   ],
                 ],
@@ -423,7 +452,13 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Text(title,
                 style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
           ),
-          const Divider(),
+          Divider(
+            style: DividerThemeData(
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: context.colors.divider)),
+              ),
+            ),
+          ),
           ...rows,
         ]),
       );
@@ -436,7 +471,7 @@ class _SettingsPageState extends State<SettingsPage> {
               Text(label, style: const TextStyle(fontSize: 12.8, fontWeight: FontWeight.w600)),
               if (desc.isNotEmpty) ...[
                 const SizedBox(height: 2),
-                Text(desc, style: const TextStyle(fontSize: 11, color: AppTokens.text3)),
+                Text(desc, style:  TextStyle(fontSize: 11, color: context.colors.textTertiary)),
               ],
             ]),
           ),

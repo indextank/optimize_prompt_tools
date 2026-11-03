@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../core/models.dart';
+import '../core/shortcuts.dart';
 import 'storage/app_storage.dart';
 
 /// 主题模式
@@ -21,7 +22,7 @@ class AppSettings {
     this.language = 'zh_CN',
     this.autoStart = false,
     this.hotkey = 'Ctrl+Shift+Space',
-    this.floatingBall = false,
+    this.optimizeHotkey = 'Ctrl+Enter',
     this.defaultMode = OptimizeMode.quick,
     this.defaultScene = 'ai_coding',
     this.resultLanguage = 'follow',
@@ -37,8 +38,13 @@ class AppSettings {
   final AppThemeMode themeMode;
   final String language;
   final bool autoStart;
+
+  /// 全局唤起热键（系统级注册；桌面端生效）。
   final String hotkey;
-  final bool floatingBall;
+
+  /// 工作台「快速优化」快捷键（应用内）。
+  final String optimizeHotkey;
+
   final OptimizeMode defaultMode;
   final String defaultScene;
 
@@ -59,7 +65,7 @@ class AppSettings {
     String? language,
     bool? autoStart,
     String? hotkey,
-    bool? floatingBall,
+    String? optimizeHotkey,
     OptimizeMode? defaultMode,
     String? defaultScene,
     String? resultLanguage,
@@ -76,7 +82,7 @@ class AppSettings {
         language: language ?? this.language,
         autoStart: autoStart ?? this.autoStart,
         hotkey: hotkey ?? this.hotkey,
-        floatingBall: floatingBall ?? this.floatingBall,
+        optimizeHotkey: optimizeHotkey ?? this.optimizeHotkey,
         defaultMode: defaultMode ?? this.defaultMode,
         defaultScene: defaultScene ?? this.defaultScene,
         resultLanguage: resultLanguage ?? this.resultLanguage,
@@ -94,7 +100,7 @@ class AppSettings {
         'language': language,
         'auto_start': autoStart,
         'hotkey': hotkey,
-        'floating_ball': floatingBall,
+        'optimize_hotkey': optimizeHotkey,
         'default_mode': defaultMode.name,
         'default_scene': defaultScene,
         'result_language': resultLanguage,
@@ -113,7 +119,8 @@ class AppSettings {
         language: j['language'] as String? ?? 'zh_CN',
         autoStart: j['auto_start'] as bool? ?? false,
         hotkey: j['hotkey'] as String? ?? 'Ctrl+Shift+Space',
-        floatingBall: j['floating_ball'] as bool? ?? false,
+        optimizeHotkey:
+            j['optimize_hotkey'] as String? ?? 'Ctrl+Enter',
         defaultMode: OptimizeMode.parse(j['default_mode'] as String? ?? 'quick'),
         defaultScene: j['default_scene'] as String? ?? 'ai_coding',
         resultLanguage: j['result_language'] as String? ?? 'follow',
@@ -130,6 +137,8 @@ class AppSettings {
 
   /// 校验；返回错误文案（null = 合法）
   String? validate() {
+    final shortcutError = _validateShortcuts();
+    if (shortcutError != null) return shortcutError;
     if (timeoutSecs < 5 || timeoutSecs > 300) return '请求超时时间需在 5-300 秒之间';
     if (retentionDays < 0 || retentionDays > 3650) return '历史保留天数需在 0-3650 之间';
     if (proxyMode == ProxyMode.custom && proxyUrl.trim().isNotEmpty) {
@@ -141,6 +150,30 @@ class AppSettings {
           !u.startsWith('socks5://')) {
         return '代理地址需以 http:// 、https:// 或 socks5:// 开头';
       }
+    }
+    return null;
+  }
+
+  /// 四个可配置快捷键：格式合法、必须带修饰键、彼此不得冲突。
+  String? _validateShortcuts() {
+    final entries = <(String, String)>[
+      ('全局唤起热键', hotkey),
+      ('快速优化快捷键', optimizeHotkey),
+    ];
+    final seen = <ShortcutBinding, String>{};
+    for (final (label, raw) in entries) {
+      final error = validateShortcutText(raw, field: label);
+      if (error != null) return error;
+      final binding = ShortcutBinding.tryParse(raw)!;
+      if (binding.label == kCloseTabShortcut ||
+          binding.label == kNewTabShortcut) {
+        return '$label不能使用固定的标签快捷键（$kCloseTabShortcut / $kNewTabShortcut）';
+      }
+      final previous = seen[binding];
+      if (previous != null) {
+        return '$label与「$previous」快捷键冲突，请更换组合';
+      }
+      seen[binding] = label;
     }
     return null;
   }

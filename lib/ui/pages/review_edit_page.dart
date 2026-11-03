@@ -341,12 +341,12 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
         child: const Text('‹ 返回工作台'),
       ),
       const SizedBox(width: 14),
-      const Expanded(
+      Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('复查与编辑', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
           Text('对照复查清单逐项核对，点击任意段落可直接编辑',
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11.5, color: AppTokens.text3)),
+              style: TextStyle(fontSize: 11.5, color: context.colors.textTertiary)),
         ]),
       ),
       const SizedBox(width: 10),
@@ -383,8 +383,8 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
     return Card(
       padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _head('原始提示词', trailing: const Text('只读',
-            style: TextStyle(fontSize: 11.5, color: AppTokens.text3))),
+        _head('原始提示词', trailing: Text('只读',
+            style: TextStyle(fontSize: 11.5, color: context.colors.textTertiary))),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -392,12 +392,12 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF6F7F8),
+                color: context.colors.surfaceSubtle,
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: AppTokens.border),
+                border: Border.all(color: context.colors.border),
               ),
               child: SelectableText(record.rawText,
-                  style: const TextStyle(fontSize: 13, height: 1.8, color: AppTokens.text2)),
+                  style:  TextStyle(fontSize: 13, height: 1.8, color: context.colors.textSecondary)),
             ),
           ),
         ),
@@ -405,7 +405,7 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
           padding: const EdgeInsets.all(14),
           child: Text(
               '${record.rawText.length} 字 · 优化前质量评分 ${record.scoreBefore ?? "-"} / 100',
-              style: const TextStyle(fontSize: 11.5, color: AppTokens.text3)),
+              style:  TextStyle(fontSize: 11.5, color: context.colors.textTertiary)),
         ),
       ]),
     );
@@ -468,18 +468,18 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
                   ),
                 ),
         ),
-        const Padding(
+        Padding(
           padding: EdgeInsets.fromLTRB(14, 6, 14, 10),
           child: Row(children: [
             Flexible(
                 child: Text('修改将自动保存为当前版本草稿',
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11.5, color: AppTokens.text3))),
+                    style: TextStyle(fontSize: 11.5, color: context.colors.textTertiary))),
             Spacer(),
             Flexible(
                 child: Text('支持 Markdown 语法',
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11.5, color: AppTokens.text3))),
+                    style: TextStyle(fontSize: 11.5, color: context.colors.textTertiary))),
           ]),
         ),
       ]),
@@ -495,8 +495,8 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
-              color: editing ? AppTokens.accent : Colors.transparent, width: 1.5),
-          color: editing ? Colors.white : null,
+              color: editing ? context.colors.accent : Colors.transparent, width: 1.5),
+          color: editing ? context.colors.surface : null,
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(
@@ -505,10 +505,10 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.5),
                 decoration: BoxDecoration(
-                    color: AppTokens.accentLight, borderRadius: BorderRadius.circular(4)),
+                    color: context.colors.accentSubtle, borderRadius: BorderRadius.circular(4)),
                 child: Text(SectionKeys.titles[key]!,
-                    style: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w700, color: AppTokens.accentDark)),
+                    style:  TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w700, color: context.colors.accentText)),
               ),
               const Spacer(),
               if (editing)
@@ -595,44 +595,45 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
     return Card(
       padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _head('复查清单', trailing: const Text('AI 诊断',
-            style: TextStyle(fontSize: 11.5, color: AppTokens.text3))),
+        _head('复查清单', trailing: Text('AI 诊断',
+            style: TextStyle(fontSize: 11.5, color: context.colors.textTertiary))),
         if (result.scoreBefore != null || result.scoreAfter != null)
           Container(
             margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFFF6FBF7),
-              border: Border.all(color: const Color(0xFFD8ECDD)),
+              color: context.colors.successSubtle,
+              border: Border.all(
+                  color: context.colors.success.withValues(alpha: 0.35)),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(children: [
               Text('${result.scoreBefore ?? "-"}',
-                  style: const TextStyle(
+                  style:  TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: AppTokens.text3,
+                      color: context.colors.textTertiary,
                       decoration: TextDecoration.lineThrough)),
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Text('→', style: TextStyle(color: AppTokens.success, fontSize: 14)),
+                child: Text('→', style: TextStyle(color: context.colors.success, fontSize: 14)),
               ),
               Text('${result.scoreAfter ?? "-"}',
-                  style: const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.w700, color: AppTokens.success)),
+                  style:  TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.w700, color: context.colors.success)),
               const Spacer(),
-              const Text('质量评分\n优化前 / 后',
+              Text('质量评分\n优化前 / 后',
                   textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 10.5, color: AppTokens.text3)),
+                  style: TextStyle(fontSize: 10.5, color: context.colors.textTertiary)),
             ]),
           ),
         Expanded(
           child: ListView(padding: const EdgeInsets.symmetric(horizontal: 14), children: [
             if (result.diagnosis.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(8),
                 child: Text('无诊断数据（快速模式或结果未结构化）',
-                    style: TextStyle(fontSize: 12, color: AppTokens.text3)),
+                    style: TextStyle(fontSize: 12, color: context.colors.textTertiary)),
               ),
             for (final d in result.diagnosis)
               Padding(
@@ -644,16 +645,20 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
                     margin: const EdgeInsets.only(top: 1),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: d.isFixed ? AppTokens.success : Colors.white,
+                      color: d.isFixed
+                          ? context.colors.success
+                          : context.colors.surface,
                       border: d.isFixed
                           ? null
-                          : Border.all(color: AppTokens.warning, width: 1.5),
+                          : Border.all(color: context.colors.warning, width: 1.5),
                     ),
                     alignment: Alignment.center,
                     child: Text(d.isFixed ? '✓' : '!',
                         style: TextStyle(
                             fontSize: 11,
-                            color: d.isFixed ? Colors.white : AppTokens.warning)),
+                            color: d.isFixed
+                                ? context.colors.textOnAccent
+                                : context.colors.warning)),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -663,13 +668,13 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
                               fontSize: 12.5, fontWeight: FontWeight.w600)),
                       if (d.before.isNotEmpty)
                         Text(d.before,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 11,
-                                color: Color(0xFFB0B6BB),
+                                color: context.colors.textTertiary,
                                 decoration: TextDecoration.lineThrough)),
                       if (d.action.isNotEmpty)
                         Text(d.action,
-                            style: const TextStyle(fontSize: 11, color: AppTokens.text3)),
+                            style:  TextStyle(fontSize: 11, color: context.colors.textTertiary)),
                     ]),
                   ),
                 ]),
@@ -687,7 +692,7 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
             Align(
               alignment: Alignment.centerLeft,
               child: Text('$total 项诊断 · $fixed 项已修复 · ${total - fixed} 项待确认',
-                  style: const TextStyle(fontSize: 11, color: AppTokens.text3)),
+                  style:  TextStyle(fontSize: 11, color: context.colors.textTertiary)),
             ),
           ]),
         ),
@@ -705,8 +710,8 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
         alignment: WrapAlignment.spaceBetween,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          const Text('✓ 自动保存已开启 · 历史版本可随时回滚',
-              style: TextStyle(fontSize: 11.5, color: AppTokens.text3)),
+          Text('✓ 自动保存已开启 · 历史版本可随时回滚',
+              style: TextStyle(fontSize: 11.5, color: context.colors.textTertiary)),
           Wrap(spacing: AppTokens.gapS, runSpacing: AppTokens.gapS, children: [
             Button(
               onPressed: _backToWorkbench,
@@ -722,7 +727,11 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
   Widget _head(String title, {Widget? trailing}) => Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
         child: Row(children: [
-          Text(title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+          Text(title,
+              style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: context.colors.textPrimary)),
           const Spacer(),
           if (trailing != null) trailing,
         ]),

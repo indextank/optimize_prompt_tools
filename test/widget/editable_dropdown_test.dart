@@ -117,7 +117,7 @@ void main() {
           // Kimi 不支持在线自动拉取：输入 KEY 后点「刷新模型列表」走内置清单兜底
           fetcher: (_, __, ___) async =>
               ['k3', 'k3-256k', 'kimi-for-coding', 'kimi-for-coding-highspeed']);
-      await tester.enterText(find.byType(PasswordBox), 'sk-correct-key');
+      await tester.enterText(find.byKey(const Key('api-key-field')), 'sk-correct-key');
       await tester.tap(find.text('刷新模型列表'));
       await tester.pumpAndSettle();
       expect(find.textContaining('共 4 个可用模型'), findsOneWidget);
@@ -144,7 +144,7 @@ void main() {
           initial: 'deepseek',
           fetcher: (_, __, ___) async =>
               ['deepseek-flash', 'deepseek-v4-pro', 'deepseek-new-online']);
-      await tester.enterText(find.byType(PasswordBox), 'sk-x');
+      await tester.enterText(find.byKey(const Key('api-key-field')), 'sk-x');
       await tester.pump(const Duration(milliseconds: 900));
       await tester.pumpAndSettle();
       final items = await openDropdownItems(tester, const Key('model-dropdown'));

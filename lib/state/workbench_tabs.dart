@@ -90,9 +90,8 @@ class OptimizationTabState {
 class WorkbenchTabRuntime {
   WorkbenchTabRuntime({
     required this.state,
-    void Function()? onChanged,
-  })  : _onChanged = onChanged,
-        controller = TextEditingController(text: state.rawText) {
+    this._onChanged,
+  })  : controller = TextEditingController(text: state.rawText) {
     controller.addListener(_handleInput);
   }
 
@@ -150,8 +149,8 @@ class WorkbenchTabRuntime {
 /// 管理固定工作台与可关闭会话 tab，并同步各 tab 的输入变更。
 class WorkbenchTabsController extends ChangeNotifier {
   WorkbenchTabsController({
-    required OptimizationTabState Function(String id, String title) stateFactory,
-  }) : _stateFactory = stateFactory {
+    required this._stateFactory,
+  }) {
     _tabs.add(_createRuntime('工作台'));
   }
 

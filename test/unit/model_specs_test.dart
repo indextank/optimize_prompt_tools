@@ -7,15 +7,21 @@ import 'package:prompt_optimizer/core/model_specs.dart';
 
 void main() {
   group('服务商配置表', () {
-    test('内置九家服务商且顺序符合需求条目', () {
+    test('内置九家官方服务商 + 自定义占位，顺序符合需求条目', () {
       expect(kProviderList, [
         'doubao', 'dashscope', 'qianfan', 'zhipu', 'kimi',
         'deepseek', 'stepfun', 'mimo', 'minimax',
       ]);
-      expect(kProviderConfigs.length, 9);
+      expect(kProviderConfigs.length, 10);
       for (final p in kProviderList) {
         expect(kProviderConfigs, contains(p), reason: '$p 缺少配置');
       }
+      final custom = kProviderConfigs[kCustomProvider]!;
+      expect(custom.name, '自定义');
+      expect(custom.defaultUrl, isEmpty);
+      expect(custom.defaultModel, isEmpty);
+      expect(custom.models, isEmpty);
+      expect(custom.apiUrlOptions, isEmpty);
     });
 
     test('每家配置完整：默认地址/模型清单/默认模型', () {

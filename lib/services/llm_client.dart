@@ -87,7 +87,7 @@ class ConnectionTestResult {
 ///
 /// 输入 SSE 文本流（可能按任意字节边界切分），输出解析后的 JSON data 载荷。
 class SseParser {
-  SseParser({void Function(String data)? onData}) : _onData = onData;
+  SseParser({this._onData});
 
   final void Function(String data)? _onData;
   final StringBuffer _lineBuf = StringBuffer();

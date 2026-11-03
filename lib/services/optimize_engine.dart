@@ -48,7 +48,7 @@ class OptimizeRequestPlan {
 
 /// 优化引擎
 class OptimizeEngine {
-  OptimizeEngine({required LlmClient client}) : _client = client;
+  OptimizeEngine({required this._client});
 
   final LlmClient _client;
 

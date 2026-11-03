@@ -1,10 +1,11 @@
 name: prompt_optimizer
 description: 跨平台提示词优化工具（Windows / Linux / Android），聚合国内主流大模型。
 publish_to: "none"
-version: 1.0.3
+version: 1.2.0+5
 
 environment:
-  sdk: ^3.5.0
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
 
 dependencies:
   flutter:
@@ -30,6 +31,10 @@ dependencies:
   crypto: ^3.0.6
   package_info_plus: ^9.0.1
   xdg_directories: ^1.1.0
+  # 全局唤起热键（系统级；Linux 构建需 libx11-dev/libxi-dev）
+  hotkey_manager: 0.3.0
+  # 热键触发时恢复/前置应用窗口
+  window_manager: 0.6.0
 
 dev_dependencies:
   flutter_test:

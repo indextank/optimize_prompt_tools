@@ -18,6 +18,7 @@ Future<void> showUpdateDialog(
   UpdateInstaller? installer,
 }) {
   return showDialog<void>(
+      barrierColor: context.colors.overlay,
     context: context,
     builder: (_) => UpdateDialog(
       result: result,
@@ -151,7 +152,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
           ]),
         ] else if (_phase == _Phase.error) ...[
           const SizedBox(height: AppTokens.gapM),
-          Text(_error ?? '更新失败', style: TextStyle(fontSize: 12.5, color: AppTokens.danger)),
+          Text(_error ?? '更新失败', style: TextStyle(fontSize: 12.5, color: context.colors.danger)),
         ],
       ]),
       actions: _buildActions(context),
@@ -180,7 +181,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
       case _Phase.downloading:
         return [
           Text('下载中，请保持网络连接…',
-              style: const TextStyle(fontSize: 11.5, color: AppTokens.text3)),
+              style:  TextStyle(fontSize: 11.5, color: context.colors.textTertiary)),
         ];
       case _Phase.installing:
         return [

@@ -62,7 +62,7 @@ void main() {
       for (final t in [
         '添加AI服务', 'AI服务提供商', 'API接口地址', 'API KEY', '模型',
         'Temperature', '最大输入Token', '最大输出Token', '思考模式', '支持图片输入',
-        '测试连接', '取消', '保存', '显示密码', '刷新模型列表',
+        '测试连接', '取消', '保存', '刷新模型列表',
       ]) {
         expect(find.text(t), findsWidgets, reason: t);
       }
@@ -92,7 +92,7 @@ void main() {
             fetchCalled++;
             return ['doubao-seed-1-6-250615', 'doubao-flash'];
           }));
-      await tester.enterText(find.byType(PasswordBox), 'sk-test-key');
+      await tester.enterText(find.byKey(const Key('api-key-field')), 'sk-test-key');
       await tester.pump(const Duration(milliseconds: 900)); // 越过防抖
       await tester.pumpAndSettle();
       expect(fetchCalled, greaterThanOrEqualTo(1));
@@ -104,7 +104,7 @@ void main() {
           tester,
           AddServiceDialog(modelFetcher: (_, __, ___) async =>
               throw Exception('network down')));
-      await tester.enterText(find.byType(PasswordBox), 'sk-x');
+      await tester.enterText(find.byKey(const Key('api-key-field')), 'sk-x');
       await tester.pump(const Duration(milliseconds: 900));
       await tester.pumpAndSettle();
       expect(find.textContaining('获取模型列表失败'), findsOneWidget);
@@ -152,7 +152,7 @@ void main() {
       })));
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(PasswordBox), 'sk-secret');
+      await tester.enterText(find.byKey(const Key('api-key-field')), 'sk-secret');
       await tester.pump(const Duration(milliseconds: 900));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, '保存'));

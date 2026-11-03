@@ -176,12 +176,16 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
 
   // ---------------------------------------------------------------- 头部
   Widget _buildHeader() {
-    const titleColumn = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('优化工作台', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+    final titleColumn = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('优化工作台',
+          style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+              color: context.colors.textPrimary)),
       SizedBox(height: 4),
       Text('输入原始想法，一键优化为结构化、可直接投喂给 AI 的高质量提示词',
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 12.5, color: AppTokens.text3)),
+          style: TextStyle(fontSize: 12.5, color: context.colors.textTertiary)),
     ]);
     // 紧凑窄屏：标题与控制组上下两行（控制组获全宽约束，内部自行换行，杜绝溢出）
     if (MediaQuery.of(context).size.width < AppTokens.compactBreakpoint) {
@@ -197,7 +201,7 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
       ]);
     }
     return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-      const Expanded(child: titleColumn),
+       Expanded(child: titleColumn),
       const SizedBox(width: 12),
       // 右侧控制组：Wrap 右对齐——窄屏自动换行，绝不超出页面右缘 padding
       Wrap(
@@ -220,8 +224,8 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
     return [
       // 单模型（<2 个服务）时锁定开关并说明原因
       if (!canParallel)
-        const Text('配置 ≥2 个 AI 服务后可开启并行对比',
-            style: TextStyle(fontSize: 11, color: AppTokens.warning)),
+        Text('配置 ≥2 个 AI 服务后可开启并行对比',
+            style: TextStyle(fontSize: 11, color: context.colors.warning)),
       ToggleSwitch(
         checked: canParallel && parallelOn,
         // 服务不足或该 tab 优化请求进行中时锁定（只影响本 tab）
@@ -267,8 +271,8 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
         ),
       // 已开启但未选择对比模型时的生效提示
       if (canParallel && parallelOn && appState.parallelCandidateCountFor(tab.id) < 2)
-        const Text('选择对比模型后并行生效',
-            style: TextStyle(fontSize: 11, color: AppTokens.warning)),
+        Text('选择对比模型后并行生效',
+            style: TextStyle(fontSize: 11, color: context.colors.warning)),
     ];
   }
 
@@ -332,18 +336,18 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
                 return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('编程预置词',
+                      Text('编程预置词',
                           style:
-                              TextStyle(fontSize: 12.5, color: AppTokens.text2)),
+                              TextStyle(fontSize: 12.5, color: context.colors.textSecondary)),
                       const SizedBox(height: 4),
                       SizedBox(width: double.infinity, child: combo),
                     ]);
               }
               return Row(children: [
-                const Flexible(
+                Flexible(
                     child: Text('编程预置词',
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12.5, color: AppTokens.text2))),
+                        style: TextStyle(fontSize: 12.5, color: context.colors.textSecondary))),
                 const SizedBox(width: AppTokens.gapS),
                 Expanded(child: combo),
               ]);
@@ -366,11 +370,11 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           // 按实际可用宽度选择 Row/Wrap：窄栏（拖拽分栏极限/小窗）不得 RenderFlex 溢出
           child: LayoutBuilder(builder: (context, constraints) {
-            const hint = Text('Ctrl+Enter 快速优化 · 支持粘贴长文本',
+            final hint = Text('Ctrl+Enter 快速优化 · 支持粘贴长文本',
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11.5, color: AppTokens.text3));
+                style: TextStyle(fontSize: 11.5, color: context.colors.textTertiary));
             final count = Text('$len 字',
-                style: const TextStyle(fontSize: 12, color: AppTokens.text3));
+                style:  TextStyle(fontSize: 12, color: context.colors.textTertiary));
             final pasteBtn = Button(
               child: const Text('📋 粘贴'),
               onPressed: () async {
@@ -399,7 +403,7 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
               );
             }
             return Row(children: [
-              const Expanded(child: hint),
+               Expanded(child: hint),
               // 字数统计：输入框最下方，「粘贴」按钮左侧
               count,
               const SizedBox(width: AppTokens.gapM),
@@ -495,7 +499,7 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
             Flexible(
               child: Text('v${record.latest.v} · ${record.mode.label}',
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11.5, color: AppTokens.text3)),
+                  style:  TextStyle(fontSize: 11.5, color: context.colors.textTertiary)),
             ),
           ],
         ])),
@@ -588,7 +592,7 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
                 ? '优化结果将在这里展示\n输入上方原始想法后点击「开始优化」'
                 : '优化结果将在这里展示\n输入左侧原始想法后点击「开始优化」',
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppTokens.text3, height: 1.8)));
+            style:  TextStyle(color: context.colors.textTertiary, height: 1.8)));
   }
 
   /// 当前 record 的结果（可编辑，编辑自动落库为新版本）
@@ -627,7 +631,7 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
           child: Text(interrupted ? '⚠ 已中断：$message' : message,
               style: TextStyle(
                   fontSize: 12.5,
-                  color: interrupted ? AppTokens.warning : AppTokens.danger)),
+                  color: interrupted ? context.colors.warning : context.colors.danger)),
         ),
         const SizedBox(width: 8),
         Button(
@@ -684,8 +688,8 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
               child: Align(
                 alignment: Alignment.topLeft,
                 child: Text('⚠ ${tab.errorMessage}',
-                    style: const TextStyle(
-                        fontSize: 12, color: AppTokens.danger)),
+                    style:  TextStyle(
+                        fontSize: 12, color: context.colors.danger)),
               ),
             ),
           ),
@@ -699,8 +703,8 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
               child: Align(
                 alignment: Alignment.topLeft,
                 child: Text(_askProgressText(),
-                    style: const TextStyle(
-                        fontSize: 12, color: AppTokens.text3)),
+                    style:  TextStyle(
+                        fontSize: 12, color: context.colors.textTertiary)),
               ),
             ),
           ),
@@ -756,7 +760,7 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
               width: 4,
               height: 44,
               decoration: BoxDecoration(
-                color: AppTokens.border,
+                color: context.colors.border,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -782,11 +786,11 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
             runSpacing: AppTokens.gapXs,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Text('优化模式',
+              Text('优化模式',
                   style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
-                      color: AppTokens.text3)),
+                      color: context.colors.textTertiary)),
               for (final m in OptimizeMode.values)
                 _ModeSegment(
                   label: m.label,
@@ -795,7 +799,7 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
                 ),
               if (tab.droppedProviderNames.isNotEmpty)
                 Text('超出并行上限已忽略：${tab.droppedProviderNames.join("、")}',
-                    style: const TextStyle(fontSize: 11, color: AppTokens.warning)),
+                    style:  TextStyle(fontSize: 11, color: context.colors.warning)),
             ],
           ),
         ),
@@ -825,13 +829,17 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
   Widget _cardHead(String title, {Widget? trailing, String? hint}) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
         child: Row(children: [
-          Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          Text(title,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: context.colors.textPrimary)),
           if (hint != null) ...[
             const SizedBox(width: 8),
             Flexible(
               child: Text(hint,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11, color: AppTokens.text3)),
+                  style:  TextStyle(fontSize: 11, color: context.colors.textTertiary)),
             ),
           ],
           const Spacer(),
@@ -842,57 +850,99 @@ class _WorkbenchPanelState extends State<WorkbenchPanel>
 
 // ==================== 小组件 ====================
 
-class _SceneChip extends StatelessWidget {
+class _SceneChip extends StatefulWidget {
   const _SceneChip({required this.label, required this.selected, required this.onTap});
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
   @override
+  State<_SceneChip> createState() => _SceneChipState();
+}
+
+class _SceneChipState extends State<_SceneChip> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        decoration: BoxDecoration(
-          color: selected ? AppTokens.accentLight : Colors.white,
-          border: Border.all(color: selected ? AppTokens.accent : AppTokens.border),
-          borderRadius: BorderRadius.circular(20),
+    final colors = context.colors;
+    final selected = widget.selected;
+    final Color background = selected
+        ? colors.accentSubtle
+        : (_hovered ? colors.hover : colors.surface);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: background,
+            border: Border.all(
+                color: selected ? colors.accent : colors.border),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(widget.label,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: selected ? colors.accentText : colors.textSecondary,
+                  fontWeight:
+                      selected ? FontWeight.w600 : FontWeight.normal)),
         ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 12,
-                color: selected ? AppTokens.accentDark : AppTokens.text2,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
       ),
     );
   }
 }
 
-class _ModeSegment extends StatelessWidget {
+class _ModeSegment extends StatefulWidget {
   const _ModeSegment({required this.label, required this.selected, required this.onTap});
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
   @override
+  State<_ModeSegment> createState() => _ModeSegmentState();
+}
+
+class _ModeSegmentState extends State<_ModeSegment> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-        decoration: BoxDecoration(
-          color: selected ? Colors.white : const Color(0xFFF0F1F2),
-          borderRadius: BorderRadius.circular(5),
-          boxShadow: selected
-              ? [BoxShadow(color: Colors.black.withValues(alpha: .08), blurRadius: 2)]
-              : null,
+    final colors = context.colors;
+    final selected = widget.selected;
+    final Color background = selected
+        ? colors.surface
+        : (_hovered ? colors.hover : colors.surfaceSubtle);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(5),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                        color: colors.shadow,
+                        blurRadius: 2)
+                  ]
+                : null,
+          ),
+          child: Text(widget.label,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  color:
+                      selected ? colors.accentText : colors.textSecondary,
+                  fontWeight:
+                      selected ? FontWeight.w600 : FontWeight.normal)),
         ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 12.5,
-                color: selected ? AppTokens.accentDark : AppTokens.text2,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
       ),
     );
   }
@@ -908,12 +958,12 @@ class _ScorePill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xFFEAF6EC),
+        color: context.colors.successSubtle,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         before == null ? '质量评分 $after / 100' : '质量评分 $before → $after',
-        style: const TextStyle(fontSize: 12, color: AppTokens.success, fontWeight: FontWeight.w600),
+        style:  TextStyle(fontSize: 12, color: context.colors.success, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -965,7 +1015,7 @@ class _ParallelColumn extends StatelessWidget {
     if (st.error != null) {
       content = Text(
           '调用失败：${st.error is LlmException ? (st.error as LlmException).userMessage : '异常：${st.error}'}',
-          style: const TextStyle(fontSize: 12, color: AppTokens.danger, height: 1.6));
+          style:  TextStyle(fontSize: 12, color: context.colors.danger, height: 1.6));
     } else if (st.success) {
       final r = st.runResult!.result;
       content = r.isStructured
@@ -976,12 +1026,12 @@ class _ParallelColumn extends StatelessWidget {
     } else if (interrupted) {
       content = SingleChildScrollView(
         child: Text(streamed.trim().isEmpty ? '未收到内容' : streamed,
-            style: const TextStyle(fontSize: 12, height: 1.6, color: AppTokens.text3)),
+            style:  TextStyle(fontSize: 12, height: 1.6, color: context.colors.textTertiary)),
       );
     } else {
       content = SingleChildScrollView(
         child: Text(streamed.isEmpty ? '请求中…' : streamed,
-            style: const TextStyle(fontSize: 12, height: 1.6, color: AppTokens.text3)),
+            style:  TextStyle(fontSize: 12, height: 1.6, color: context.colors.textTertiary)),
       );
     }
     return Card(
@@ -995,12 +1045,12 @@ class _ParallelColumn extends StatelessWidget {
                 style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
           ),
           if (st.error != null)
-            const Text('✗ 失败', style: TextStyle(fontSize: 11, color: AppTokens.danger))
+            Text('✗ 失败', style: TextStyle(fontSize: 11, color: context.colors.danger))
           else if (st.success)
             Text('✓ 完成 ${_fmtElapsed(st.elapsedMs)}',
-                style: const TextStyle(fontSize: 11, color: AppTokens.success))
+                style:  TextStyle(fontSize: 11, color: context.colors.success))
           else if (interrupted)
-            const Text('⚠ 已中断', style: TextStyle(fontSize: 11, color: AppTokens.warning))
+            Text('⚠ 已中断', style: TextStyle(fontSize: 11, color: context.colors.warning))
           else
             const SizedBox(
                 width: 12, height: 12, child: ProgressRing(strokeWidth: 2)),
@@ -1033,7 +1083,7 @@ class _StreamingView extends StatelessWidget {
               if (e.value.error != null)
                 Text(
                     '失败：${e.value.error is LlmException ? (e.value.error as LlmException).userMessage : '异常：${e.value.error}'}',
-                    style: const TextStyle(color: AppTokens.danger, fontSize: 12))
+                    style:  TextStyle(color: context.colors.danger, fontSize: 12))
               else if (e.value.success)
                 Text(e.value.runResult!.result.toPlainText(),
                     maxLines: 6,
@@ -1145,7 +1195,7 @@ class _AskItemState extends State<_AskItem> {
           Padding(
             padding: const EdgeInsets.only(top: 2, bottom: 6),
             child: Text('决定：${widget.question.decides}',
-                style: const TextStyle(fontSize: 11, color: AppTokens.text3)),
+                style:  TextStyle(fontSize: 11, color: context.colors.textTertiary)),
           ),
         // 输入框保持渲染（跳过仅写入 null）：重建/回填不再丢失可编辑入口
         TextBox(

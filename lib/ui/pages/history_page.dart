@@ -46,6 +46,7 @@ class _HistoryPageState extends State<HistoryPage> {
     final count = await appState.storage.recordCount();
     if (!mounted) return;
     final ok = await showDialog<bool>(
+      barrierColor: context.colors.overlay,
       context: context,
       builder: (ctx) => ContentDialog(
         title: const Text('清空历史记录'),
@@ -147,9 +148,9 @@ class _HistoryPageState extends State<HistoryPage> {
           child: _loading
               ? const Center(child: ProgressRing())
               : _records.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text('暂无历史记录',
-                          style: TextStyle(color: AppTokens.text3)))
+                          style: TextStyle(color: context.colors.textTertiary)))
                   : ListView.builder(
                       itemCount: _records.length,
                       itemBuilder: (context, i) => _RecordTile(
@@ -207,7 +208,7 @@ class _RecordTile extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
                 '$time · $sceneName · ${record.mode.label} · $providerNames · 评分 ${record.scoreBefore ?? "-"}→${record.scoreAfter ?? "-"} · v${record.latest.v}',
-                style: const TextStyle(fontSize: 11.5, color: AppTokens.text3),
+                style:  TextStyle(fontSize: 11.5, color: context.colors.textTertiary),
                 overflow: TextOverflow.ellipsis),
           ]),
         ),
@@ -216,12 +217,12 @@ class _RecordTile extends StatelessWidget {
             margin: const EdgeInsets.only(right: 10),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-                color: const Color(0xFFEAF6EC),
+                color: context.colors.successSubtle,
                 borderRadius: BorderRadius.circular(12)),
             child: Text('${record.scoreAfter}',
-                style: const TextStyle(
+                style:  TextStyle(
                     fontSize: 12,
-                    color: AppTokens.success,
+                    color: context.colors.success,
                     fontWeight: FontWeight.w600)),
           ),
         Button(onPressed: onOpen, child: const Text('打开')),

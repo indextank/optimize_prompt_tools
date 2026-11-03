@@ -30,6 +30,7 @@ typedef AddServiceResult = ({ServiceConfig config, String apiKey});
 Future<AddServiceResult?> showAddServiceDialog(BuildContext context,
     {ModelFetcher? modelFetcher, ConnectionTester? connectionTester}) {
   return showDialog<AddServiceResult>(
+      barrierColor: context.colors.overlay,
     context: context,
     builder: (_) => AddServiceDialog(
       modelFetcher: modelFetcher,
@@ -42,6 +43,7 @@ Future<AddServiceResult?> showAddServiceDialog(BuildContext context,
 Future<AddServiceResult?> showEditServiceDialog(BuildContext context, ServiceConfig config,
     {String? apiKey, ModelFetcher? modelFetcher, ConnectionTester? connectionTester}) {
   return showDialog<AddServiceResult>(
+      barrierColor: context.colors.overlay,
     context: context,
     builder: (_) => AddServiceDialog(
       editing: config,
@@ -115,6 +117,9 @@ class AddServiceDialogState extends State<AddServiceDialog> {
       _urlCtrl.text = form.apiUrl;
       _modelCtrl.text = form.model;
       _models = getProviderConfig(v)!.models; // 必须用新 provider 的配置
+      _modelStatus = '';
+      _modelStatusOk = false;
+      _testStatus = '';
     });
   }
 
@@ -135,7 +140,9 @@ class AddServiceDialogState extends State<AddServiceDialog> {
     form.apiKey = _keyCtrl.text;
     _debounce?.cancel();
     final cfg = getProviderConfig(form.provider);
-    if (cfg?.supportsModelListApi ?? false) {
+    // 自定义服务商地址为空时先不拉取，等用户填写 URL。
+    if ((cfg?.supportsModelListApi ?? false) &&
+        _urlCtrl.text.trim().isNotEmpty) {
       // 输入停顿 800ms 后自动拉取模型列表（对齐基准）
       _debounce = Timer(const Duration(milliseconds: 800), _fetchModels);
     }
@@ -143,7 +150,15 @@ class AddServiceDialogState extends State<AddServiceDialog> {
 
   Future<void> _fetchModels() async {
     final key = _keyCtrl.text.trim();
+    final url = _urlCtrl.text.trim();
     if (key.isEmpty) return;
+    if (url.isEmpty) {
+      setState(() {
+        _modelStatus = '请先填写 API 接口地址';
+        _modelStatusOk = false;
+      });
+      return;
+    }
     setState(() {
       _fetching = true;
       _modelStatus = '正在获取模型列表…';
@@ -151,7 +166,7 @@ class AddServiceDialogState extends State<AddServiceDialog> {
     });
     final fetcher = widget.modelFetcher ?? appState.fetchModels;
     try {
-      final models = await fetcher(form.provider, _urlCtrl.text.trim(), key);
+      final models = await fetcher(form.provider, url, key);
       if (!mounted) return;
       setState(() {
         _models = models;
@@ -224,10 +239,13 @@ class AddServiceDialogState extends State<AddServiceDialog> {
       constraints: const BoxConstraints(maxWidth: 560, maxHeight: 860),
       title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(widget.isEdit ? '编辑AI服务' : '添加AI服务',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: context.colors.textPrimary)),
         const SizedBox(height: 4),
-        const Text('配置AI服务提供商、API密钥和模型参数',
-            style: TextStyle(fontSize: 12, color: AppTokens.text3)),
+        Text('配置AI服务提供商、API密钥和模型参数',
+            style: TextStyle(fontSize: 12, color: context.colors.textTertiary)),
       ]),
       content: SingleChildScrollView(
         // 右侧预留滚动条车道（≥12px）：覆盖式滚动条出现时，
@@ -242,6 +260,8 @@ class AddServiceDialogState extends State<AddServiceDialog> {
             items: [
               for (final p in kProviderList)
                 ComboBoxItem(value: p, child: Text(getProviderConfig(p)!.name)),
+              const ComboBoxItem(
+                  value: kCustomProvider, child: Text('自定义')),
             ],
             // 编辑模式禁止修改服务商（对齐基准）
             onChanged: widget.isEdit
@@ -267,25 +287,46 @@ class AddServiceDialogState extends State<AddServiceDialog> {
               ? '可从下拉选择官方地址（标准 / ${cfg.codingPlanName}），也可直接输入自定义地址'
               : '可选择官方地址，也可直接输入自定义地址'),
           const SizedBox(height: 12),
-          Row(children: [
-            _label('API KEY'),
-            const Spacer(),
-            Checkbox(
-              checked: _showKey,
-              onChanged: (v) => setState(() => _showKey = v ?? false),
-              content: const Text('显示密码', style: TextStyle(fontSize: 11.5)),
+          _label('API KEY'),
+          TextBox(
+            key: const Key('api-key-field'),
+            controller: _keyCtrl,
+            obscureText: !_showKey,
+            placeholder: '«redacted:sk-…»',
+            suffixMode: OverlayVisibilityMode.always,
+            suffix: Tooltip(
+              message: _showKey ? '隐藏密码' : '显示密码',
+              child: IconButton(
+                icon: Icon(
+                  _showKey ? FluentIcons.hide : FluentIcons.view,
+                  size: 14,
+                ),
+                onPressed: () => setState(() => _showKey = !_showKey),
+              ),
             ),
-          ]),
-          if (_showKey)
-            TextBox(controller: _keyCtrl, placeholder: '«redacted:sk-…»')
-          else
-            PasswordBox(controller: _keyCtrl, placeholder: '«redacted:sk-…»'),
+          ),
           _hint(_modelStatus.isEmpty ? '输入API KEY后将自动获取可用模型列表' : _modelStatus,
               ok: _modelStatusOk),
           const SizedBox(height: 12),
-          Row(children: [
-            _label('模型'),
-            const Spacer(),
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _label('模型'),
+                    EditableDropdown(
+                      controller: _modelCtrl,
+                      dropdownKey: const Key('model-dropdown'),
+                      textKey: const Key('model-field'),
+                      placeholder: '请先输入API KEY获取模型列表',
+                      // 内置清单与在线拉取结果合并去重，全部展示（修复 Kimi 4 模型只显示 2 个）
+                      options: {...cfg.models, ..._models}.toList(),
+                      onChanged: (t) => form.model = t,
+                      onSelected: _applyModel,
+                    ),
+                  ]),
+            ),
+            const SizedBox(width: 8),
             Button(
               onPressed: _fetching ? null : _fetchModels,
               child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -299,20 +340,16 @@ class AddServiceDialogState extends State<AddServiceDialog> {
               ]),
             ),
           ]),
-          EditableDropdown(
-            controller: _modelCtrl,
-            dropdownKey: const Key('model-dropdown'),
-            textKey: const Key('model-field'),
-            placeholder: '请先输入API KEY获取模型列表',
-            // 内置清单与在线拉取结果合并去重，全部展示（修复 Kimi 4 模型只显示 2 个）
-            options: {...cfg.models, ..._models}.toList(),
-            onChanged: (t) => form.model = t,
-            onSelected: _applyModel,
-          ),
           if (form.spec.isFallback && form.model.isNotEmpty)
             _hint('该模型未内置官方规格，已按服务商保守规格填充'),
           const SizedBox(height: 6),
-          const Divider(),
+          Divider(
+            style: DividerThemeData(
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: context.colors.divider)),
+              ),
+            ),
+          ),
           const SizedBox(height: 6),
           _label('Temperature'),
           NumberBox<double>(
@@ -395,7 +432,7 @@ class AddServiceDialogState extends State<AddServiceDialog> {
               child: Text(_testStatus,
                   style: TextStyle(
                       fontSize: 12,
-                      color: _testOk ? AppTokens.success : AppTokens.danger)),
+                      color: _testOk ? context.colors.success : context.colors.danger)),
             ),
           ]),
         ]),
@@ -423,7 +460,7 @@ class AddServiceDialogState extends State<AddServiceDialog> {
         padding: const EdgeInsets.only(top: 4),
         child: Text(t,
             style: TextStyle(
-                fontSize: 11, color: ok ? AppTokens.success : AppTokens.text3)),
+                fontSize: 11, color: ok ? context.colors.success : context.colors.textTertiary)),
       );
 
   String _fmt(int v) {

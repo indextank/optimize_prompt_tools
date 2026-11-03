@@ -1020,7 +1020,7 @@ class AppState extends ChangeNotifier {
     final language = pickStr('language');
     final autoStart = pickBool('auto_start');
     final hotkey = pickStr('hotkey');
-    final floatingBall = pickBool('floating_ball');
+    final optimizeHotkey = pickStr('optimize_hotkey');
     final defaultMode = pickEnum('default_mode', OptimizeMode.values);
     final defaultScene = pickStr('default_scene');
     final resultLanguage = pickStr('result_language');
@@ -1037,7 +1037,7 @@ class AppState extends ChangeNotifier {
       language: language,
       autoStart: autoStart,
       hotkey: hotkey,
-      floatingBall: floatingBall,
+      optimizeHotkey: optimizeHotkey,
       defaultMode: defaultMode,
       defaultScene: defaultScene,
       resultLanguage: resultLanguage,

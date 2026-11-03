@@ -12,7 +12,7 @@
   <img alt="Flutter 3.47" src="https://img.shields.io/badge/Flutter-3.47-02569B?style=flat-square&logo=flutter&logoColor=white">
   <img alt="Dart 3.13" src="https://img.shields.io/badge/Dart-3.13-0175C2?style=flat-square&logo=dart&logoColor=white">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Android-1F6FEB?style=flat-square">
-  <img alt="Tests 299 passed" src="https://img.shields.io/badge/tests-299%20passed-4CAF50?style=flat-square">
+  <img alt="Tests 515 passed" src="https://img.shields.io/badge/tests-515%20passed-4CAF50?style=flat-square">
 </p>
 
 ## 目录
@@ -37,7 +37,7 @@
 **AI 模型配置** —— 多服务商管理、默认服务一键切换、批量连通性检测
 
 <p align="center">
-  <img src="screenshot/AI_Configuration.png" alt="AI 模型配置：已配置服务列表（模型名 + 接口地址 + 默认标记）、添加AI服务与批量检测连通性按钮、支持的九家服务商说明" width="880">
+  <img src="screenshot/AI_Configuration.png" alt="AI 模型配置：已配置服务列表（模型名 + 接口地址 + 默认标记）、添加AI服务与批量检测连通性按钮、支持的服务商说明" width="880">
 </p>
 
 **系统设置** —— 常规 / 优化偏好 / 网络与代理 / 数据管理四组卡片，变更即时生效并本地保存
@@ -51,11 +51,12 @@
 - ✨ **双输出风格** —— 简单模式（专业化重述，聚焦原始需求）与完整模式（角色定位/任务目标/具体要求等六段结构），可按次切换
 - ⚡ **三种优化策略** —— 快速优化（默认）/ 深度优化 / 提问式优化，系统设置可配置默认模式
 - 🔀 **多模型并行对比** —— 工作台一键开启，最多 3 家模型同时优化，双列结果对照，全部完成后支持逐列复查编辑
-- 🧩 **九家国内主流大模型** —— 豆包、通义千问、文心一言、智谱、Kimi、DeepSeek、阶跃 StepFun、小米 MiMo、MiniMax；统一 OpenAI 兼容协议，Kimi/智谱额外支持 Coding Plan 双地址
+- 🧩 **九家国内主流大模型** —— 豆包、通义千问、文心一言、智谱、Kimi、DeepSeek、阶跃 StepFun、小米 MiMo、MiniMax；统一 OpenAI 兼容协议，Kimi/智谱额外支持 Coding Plan 双地址；另提供「自定义」选项，可手动填写地址/模型/Key
 - 🔐 **BYOK 密钥安全** —— API 密钥经 flutter_secure_storage 平台级加密存储；配置导出为 JSON 不含密钥，可安全备份迁移
 - 🕘 **历史版本链** —— 每次优化与编辑留存版本，支持回滚、Markdown 导出、按模型/关键词筛选
 - 📋 **场景模板** —— AI 编程 / Bug 修复 / 文案写作 / 翻译润色 / 绘画提示词 / 数据分析 / PRD 文档，按场景定制优化侧重点
 - 🖥️ **真跨平台** —— Windows / Linux / Android 同一代码库；窄屏自动切换底部导航，主流分辨率下无溢出布局（全量布局巡检测试保障）
+- ⌨️ **可配置快捷键** —— 全局唤起（默认 `Ctrl+Shift+Space`）与快速优化（`Ctrl+Enter`）可在系统设置中录制修改；关闭/新建标签保留固定 `Ctrl+W` / `Ctrl+T`；桌面端系统级生效
 
 ## 支持的 AI 服务商
 
@@ -70,6 +71,7 @@
 | 阶跃 StepFun | OpenAI 兼容 |
 | 小米 MiMo | OpenAI 兼容 |
 | MiniMax | OpenAI 兼容 |
+| 自定义 | OpenAI 兼容（手动填写接口地址与模型） |
 
 > 全部服务商均为 BYOK（Bring Your Own Key）模式，密钥仅本地加密存储，不上传任何服务器。
 
@@ -92,7 +94,7 @@ flutter run -d linux
 flutter run -d <device-id>
 
 # 质量门禁
-flutter test             # 299 项全量测试（单元 + Widget）
+flutter test             # 515 项全量测试（单元 + Widget）
 flutter analyze          # 静态分析，零告警
 
 # 生产产物构建（标准 Flutter 命令）
@@ -119,6 +121,5 @@ screenshot/    # README 界面截图
 
 ## 已知边界
 
-- Linux 桌面端 Wayland 下全局热键/剪贴板自动降级（应用内热键 + 引导文案）
-- Android 悬浮球默认关闭，需用户手动授予悬浮窗权限
+- Linux Wayland 下全局热键依赖桌面 GlobalShortcuts Portal；未授权/不支持时自动降级为应用内快捷键（设置页显示状态）
 - Web 端仅作演示/验证形态（存储走 localStorage，密钥不持久化）

@@ -54,25 +54,26 @@ class EditableDropdown extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 6),
-      DropDownButton(
-        key: dropdownKey,
-        items: [
-          for (final o in options)
-            MenuFlyoutItem(
-              text: Text(o, style: const TextStyle(fontSize: 12.5)),
-              onPressed: () {
-                controller.text = o;
-                controller.selection =
-                    TextSelection.collapsed(offset: o.length);
-                onSelected?.call(o);
-              },
-            ),
-        ],
-        buttonBuilder: (context, onOpen) => IconButton(
-          icon: const Icon(FluentIcons.chevron_down, size: 10),
-          onPressed: options.isEmpty ? null : onOpen,
+      if (options.isNotEmpty)
+        DropDownButton(
+          key: dropdownKey,
+          items: [
+            for (final o in options)
+              MenuFlyoutItem(
+                text: Text(o, style: const TextStyle(fontSize: 12.5)),
+                onPressed: () {
+                  controller.text = o;
+                  controller.selection =
+                      TextSelection.collapsed(offset: o.length);
+                  onSelected?.call(o);
+                },
+              ),
+          ],
+          buttonBuilder: (context, onOpen) => IconButton(
+            icon: const Icon(FluentIcons.chevron_down, size: 10),
+            onPressed: onOpen,
+          ),
         ),
-      ),
     ]);
   }
 }

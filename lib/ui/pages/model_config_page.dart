@@ -42,6 +42,7 @@ class _ModelConfigPageState extends State<ModelConfigPage> {
 
   Future<void> _deleteService(ServiceConfig svc) async {
     final ok = await showDialog<bool>(
+      barrierColor: context.colors.overlay,
       context: context,
       builder: (ctx) => ContentDialog(
         title: const Text('删除服务'),
@@ -95,11 +96,14 @@ class _ModelConfigPageState extends State<ModelConfigPage> {
         return ScaffoldPage.withPadding(
           padding: EdgeInsets.fromLTRB(compact ? 14 : 26, 14, compact ? 14 : 26, 12),
           content: ListView(children: [
-            const Text('AI 模型配置',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+            Text('AI 模型配置',
+                style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                    color: context.colors.textPrimary)),
             const SizedBox(height: 4),
-            const Text('配置国内主流大模型服务，支持多模型并行优化与一键切换；密钥仅本地加密存储',
-                style: TextStyle(fontSize: 12.5, color: AppTokens.text3)),
+            Text('配置国内主流大模型服务，支持多模型并行优化与一键切换；密钥仅本地加密存储',
+                style: TextStyle(fontSize: 12.5, color: context.colors.textTertiary)),
             const SizedBox(height: 14),
             // ---------------- 默认优化服务 ----------------
             _Group(title: '默认优化服务', children: [
@@ -141,11 +145,11 @@ class _ModelConfigPageState extends State<ModelConfigPage> {
                 title: '已配置的AI服务（${appState.configuredServiceCount}）',
                 children: [
               if (services.isEmpty)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.all(16),
                   child: Center(
                       child: Text('暂未配置任何AI服务，请点击下方按钮添加。',
-                          style: TextStyle(color: AppTokens.text3))),
+                          style: TextStyle(color: context.colors.textTertiary))),
                 )
               else
                 for (final svc in services)
@@ -212,7 +216,7 @@ class _ModelConfigPageState extends State<ModelConfigPage> {
     final content = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       child,
       const SizedBox(height: 4),
-      Text(desc, style: const TextStyle(fontSize: 11.5, color: AppTokens.text3)),
+      Text(desc, style:  TextStyle(fontSize: 11.5, color: context.colors.textTertiary)),
     ]);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -246,7 +250,13 @@ class _Group extends StatelessWidget {
           child: Text(title,
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
         ),
-        const Divider(),
+        Divider(
+          style: DividerThemeData(
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: context.colors.divider)),
+            ),
+          ),
+        ),
         ...children,
       ]),
     );
@@ -266,17 +276,6 @@ class _ServiceCard extends StatelessWidget {
   final VoidCallback onDelete;
   final String? status;
 
-  static const _colors = {
-    'doubao': Color(0xFFFF6A00),
-    'dashscope': Color(0xFF00B578),
-    'qianfan': Color(0xFF2932E1),
-    'zhipu': Color(0xFF0F52BA),
-    'kimi': Color(0xFF7B61FF),
-    'deepseek': Color(0xFF4A90D9),
-    'stepfun': Color(0xFF1AAD19),
-    'mimo': Color(0xFFFF6900),
-    'minimax': Color(0xFF6B4FBB),
-  };
 
   @override
   Widget build(BuildContext context) {
@@ -288,16 +287,16 @@ class _ServiceCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: service.isDefault ? const Color(0xFFF0F4FF) : Colors.white,
+        color: service.isDefault ? context.colors.accentSubtle : context.colors.surface,
         border: Border.all(
             color: service.isDefault
-                ? AppTokens.defaultBlue.withValues(alpha: .3)
-                : AppTokens.border),
+                ? context.colors.info.withValues(alpha: .3)
+                : context.colors.border),
         borderRadius: BorderRadius.circular(8),
       ),
       child: MediaQuery.of(context).size.width < AppTokens.compactBreakpoint
           ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _infoRow(cfg, url),
+              _infoRow(context, cfg, url),
               const SizedBox(height: 8),
               // 右对齐：无状态时按钮同样贴右缘，与桌面态一致
               Row(mainAxisAlignment: MainAxisAlignment.end, children: [
@@ -305,7 +304,7 @@ class _ServiceCard extends StatelessWidget {
                   Expanded(
                     child: Text(status!,
                         overflow: TextOverflow.ellipsis,
-                        style: _statusStyle()),
+                        style: _statusStyle(context)),
                   ),
                 Button(onPressed: onEdit, child: const Text('✏️ 编辑')),
                 const SizedBox(width: 8),
@@ -313,7 +312,7 @@ class _ServiceCard extends StatelessWidget {
               ]),
             ])
           : Row(children: [
-              Expanded(child: _infoRow(cfg, url)),
+              Expanded(child: _infoRow(context, cfg, url)),
               if (status != null)
                 // 不用 Flexible：与 Expanded 同排时其未用尽的分配额会滞留为空隙，
                 // 把右侧按钮组整体拉离右缘（旧截图症状）。自然宽 + 上限约束即可。
@@ -324,7 +323,7 @@ class _ServiceCard extends StatelessWidget {
                     child: Text(status!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: _statusStyle()),
+                        style: _statusStyle(context)),
                   ),
                 ),
               Button(onPressed: onEdit, child: const Text('✏️ 编辑')),
@@ -335,20 +334,22 @@ class _ServiceCard extends StatelessWidget {
   }
 
   /// 图标 + 名称 + 模型/URL 信息行（桌面与紧凑两态共用）
-  Widget _infoRow(ProviderConfig? cfg, String url) {
+  Widget _infoRow(BuildContext context, ProviderConfig? cfg, String url) {
     return Row(children: [
       Container(
         width: 34,
         height: 34,
         decoration: BoxDecoration(
-          color: _colors[service.provider] ?? AppTokens.text3,
+          color: AppBrandColors.byProvider[service.provider] ?? context.colors.textTertiary,
           borderRadius: BorderRadius.circular(8),
         ),
         alignment: Alignment.center,
         child: Text(
           (cfg?.name ?? service.provider).characters.first,
-          style: const TextStyle(
-              color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+          style: TextStyle(
+              color: context.colors.textOnBrand,
+              fontSize: 15,
+              fontWeight: FontWeight.w600),
         ),
       ),
       const SizedBox(width: 12),
@@ -362,28 +363,28 @@ class _ServiceCard extends StatelessWidget {
                       fontSize: 13.5, fontWeight: FontWeight.w600)),
             ),
             if (service.isDefault)
-              const Text('  ★ 默认',
+              Text('  ★ 默认',
                   style: TextStyle(
                       fontSize: 12,
-                      color: AppTokens.defaultBlue,
+                      color: context.colors.info,
                       fontWeight: FontWeight.w600)),
           ]),
           const SizedBox(height: 2),
           Text('模型: ${service.model}  |  $url',
-              style: const TextStyle(fontSize: 11.5, color: AppTokens.text3),
+              style:  TextStyle(fontSize: 11.5, color: context.colors.textTertiary),
               overflow: TextOverflow.ellipsis),
         ]),
       ),
     ]);
   }
 
-  TextStyle _statusStyle() => TextStyle(
+  TextStyle _statusStyle(BuildContext context) => TextStyle(
       fontSize: 11.5,
       color: status!.startsWith('✓')
-          ? AppTokens.success
+          ? context.colors.success
           : status!.startsWith('✗')
-              ? AppTokens.danger
-              : AppTokens.text3);
+              ? context.colors.danger
+              : context.colors.textTertiary);
 }
 
 

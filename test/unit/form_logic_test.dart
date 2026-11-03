@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:prompt_optimizer/core/constants.dart';
 import 'package:prompt_optimizer/core/model_specs.dart';
 import 'package:prompt_optimizer/core/models.dart';
 import 'package:prompt_optimizer/ui/pages/model_config_form_logic.dart';
@@ -22,6 +23,14 @@ void main() {
       expect(f.temperature, 1.0);
       expect(f.maxInputTokens, 1048576);
       expect(f.maxOutputTokens, 65536); // 官方默认而非上限
+    });
+
+    test('自定义服务商：地址/模型为空，规格走通用回退', () {
+      final f = newForm();
+      f.onProviderChanged(kCustomProvider);
+      expect(f.apiUrl, '');
+      expect(f.model, '');
+      expect(f.spec.isFallback, isTrue);
     });
 
     test('kimi 默认 Coding Plan 地址', () {

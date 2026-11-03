@@ -289,14 +289,14 @@ class _ResultSectionsState extends State<ResultSections> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.5),
             decoration: BoxDecoration(
-              color: AppTokens.accentLight,
+              color: context.colors.accentSubtle,
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(SectionKeys.titles[key]!,
-                style: const TextStyle(
+                style:  TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
-                    color: AppTokens.accentDark)),
+                    color: context.colors.accentText)),
           ),
           const SizedBox(height: 3),
           child,
@@ -326,12 +326,12 @@ class _SectionBlock extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.5),
           decoration: BoxDecoration(
-            color: AppTokens.accentLight,
+            color: context.colors.accentSubtle,
             borderRadius: BorderRadius.circular(4),
           ),
           child: Text(label,
-              style: const TextStyle(
-                  fontSize: 11.5, fontWeight: FontWeight.w700, color: AppTokens.accentDark)),
+              style:  TextStyle(
+                  fontSize: 11.5, fontWeight: FontWeight.w700, color: context.colors.accentText)),
         ),
         const SizedBox(height: 5),
         if (items == null)

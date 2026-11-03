@@ -69,7 +69,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 输入 KEY（停顿后自动拉模型）
-    await tester.enterText(find.byType(PasswordBox), 'sk-integration');
+    await tester.enterText(find.byKey(const Key('api-key-field')), 'sk-integration');
     await tester.pump(const Duration(milliseconds: 900));
     await tester.pumpAndSettle();
     expect(find.textContaining('获取成功，共 2 个可用模型'), findsOneWidget);

@@ -52,8 +52,8 @@ class ParallelRunHandle {
     required this.states,
     required this.droppedServices,
     required this.done,
-    required void Function() onCancel,
-  }) : _onCancel = onCancel;
+    required this._onCancel,
+  });
 
   final Stream<ParallelEvent> events;
   final List<ParallelRunState> states;
@@ -76,7 +76,7 @@ class ParallelRunHandle {
 
 /// 并行调度器
 class ParallelScheduler {
-  ParallelScheduler({required OptimizeEngine engine}) : _engine = engine;
+  ParallelScheduler({required this._engine});
 
   final OptimizeEngine _engine;
 

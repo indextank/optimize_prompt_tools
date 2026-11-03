@@ -1,9 +1,12 @@
 /// 应用外壳：FluentApp + NavigationView（桌面三栏式导航，窄屏自动紧凑）。
 library;
 
+import 'dart:async';
+
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../services/global_hotkey_service.dart';
 import '../services/settings_service.dart';
 import '../services/update_service.dart';
 import '../state/app_state.dart';
@@ -81,9 +84,63 @@ class AppShellState extends State<AppShell> {
     (FluentIcons.settings, '系统设置'),
   ];
 
+  /// 当前已注册的全局热键（用于设置变更时判断是否需要重绑）。
+  String? _boundGlobalHotkey;
+  bool _syncingGlobalHotkey = false;
+  bool _resyncGlobalHotkey = false;
+
+  GlobalHotkeyService get _globalHotkey => GlobalHotkeyService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    appState.settings.addListener(_onSettingsChanged);
+    // 窗口就绪后注册；失败只更新状态，不阻塞首帧。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_syncGlobalHotkey());
+    });
+  }
+
+  @override
+  void dispose() {
+    appState.settings.removeListener(_onSettingsChanged);
+    unawaited(_globalHotkey.unbind());
+    super.dispose();
+  }
+
+  void _onSettingsChanged() {
+    final hotkey = appState.settings.settings.hotkey;
+    if (hotkey != _boundGlobalHotkey) {
+      unawaited(_syncGlobalHotkey());
+    }
+  }
+
+  Future<void> _syncGlobalHotkey() async {
+    if (_syncingGlobalHotkey) {
+      _resyncGlobalHotkey = true;
+      return;
+    }
+    _syncingGlobalHotkey = true;
+    try {
+      do {
+        _resyncGlobalHotkey = false;
+        final hotkey = appState.settings.settings.hotkey;
+        _boundGlobalHotkey = hotkey;
+        await _globalHotkey.bind(hotkey, onActivate: _activateFromGlobalHotkey);
+      } while (_resyncGlobalHotkey);
+    } finally {
+      _syncingGlobalHotkey = false;
+    }
+  }
+
+  Future<void> _activateFromGlobalHotkey() async {
+    if (!mounted) return;
+    if (_index != workbench) setState(() => _index = workbench);
+    await _globalHotkey.activateWindow();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final dark = FluentTheme.of(context).brightness == Brightness.dark;
     final width = MediaQuery.of(context).size.width;
     final compact = width < 720; // 窄屏（手机竖屏）走底部导航
 
@@ -104,10 +161,10 @@ class AppShellState extends State<AppShell> {
         // ---------------- 底部导航（Android 设计稿） ----------------
         Container(
           decoration: BoxDecoration(
-            color: dark ? const Color(0xFF2B2B2B) : Colors.white,
+            color: context.colors.sidebarBg,
             border: Border(
                 top: BorderSide(
-                    color: dark ? const Color(0xFF3A3A3A) : AppTokens.border)),
+                    color: context.colors.border)),
           ),
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Row(children: [
@@ -118,12 +175,12 @@ class AppShellState extends State<AppShell> {
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                     Icon(_navItems[i].$1,
                         size: 18,
-                        color: _index == i ? AppTokens.accentDark : AppTokens.text3),
+                        color: _index == i ? context.colors.textPrimary : context.colors.textTertiary),
                     const SizedBox(height: 2),
                     Text(_navItems[i].$2.replaceAll('优化工作台', '工作台'),
                         style: TextStyle(
                             fontSize: 10,
-                            color: _index == i ? AppTokens.accentDark : AppTokens.text3,
+                            color: _index == i ? context.colors.textPrimary : context.colors.textTertiary,
                             fontWeight:
                                 _index == i ? FontWeight.w700 : FontWeight.normal)),
                   ]),
@@ -139,10 +196,10 @@ class AppShellState extends State<AppShell> {
       Container(
         width: 216,
         decoration: BoxDecoration(
-          color: dark ? const Color(0xFF2B2B2B) : Colors.white,
+          color: context.colors.sidebarBg,
           border: Border(
               right: BorderSide(
-                  color: dark ? const Color(0xFF3A3A3A) : AppTokens.border)),
+                  color: context.colors.border)),
         ),
         child: Column(children: [
           Padding(
@@ -153,19 +210,22 @@ class AppShellState extends State<AppShell> {
                 height: 34,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
-                  gradient: const LinearGradient(
-                      colors: [Color(0xFF00B7C2), Color(0xFF0078D4)]),
+                  gradient: LinearGradient(
+                      colors: [
+                          context.colors.brandGradientStart,
+                          context.colors.brandGradientEnd,
+                        ]),
                 ),
                 alignment: Alignment.center,
                 child: const Text('✨', style: TextStyle(fontSize: 17)),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('提示词优化',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                   Text('Prompt Optimizer',
-                      style: TextStyle(fontSize: 11, color: AppTokens.text3)),
+                      style: TextStyle(fontSize: 11, color: context.colors.textTertiary)),
                 ]),
               ),
             ]),
@@ -265,15 +325,14 @@ class _VersionBlockState extends State<_VersionBlock> {
 
   @override
   Widget build(BuildContext context) {
-    final dark = FluentTheme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.all(10),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: dark ? const Color(0xFF242424) : const Color(0xFFF6F7F8),
+        color: context.colors.surfaceSubtle,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-            color: dark ? const Color(0xFF3A3A3A) : AppTokens.border),
+            color: context.colors.border),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
@@ -282,8 +341,10 @@ class _VersionBlockState extends State<_VersionBlock> {
             height: 30,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(7),
-              gradient: const LinearGradient(
-                  colors: [Color(0xFF00B7C2), Color(0xFF0078D4)]),
+              gradient: LinearGradient(colors: [
+                context.colors.brandGradientStart,
+                context.colors.brandGradientEnd,
+              ]),
             ),
             alignment: Alignment.center,
             child: const Text('✨', style: TextStyle(fontSize: 14)),
@@ -296,7 +357,7 @@ class _VersionBlockState extends State<_VersionBlock> {
                   overflow: TextOverflow.ellipsis),
               const SizedBox(height: 1),
               Text(_versionLabel ?? '正在读取版本…',
-                  style: const TextStyle(fontSize: 10.5, color: AppTokens.text3),
+                  style:  TextStyle(fontSize: 10.5, color: context.colors.textTertiary),
                   overflow: TextOverflow.ellipsis),
             ]),
           ),
@@ -317,7 +378,7 @@ class _VersionBlockState extends State<_VersionBlock> {
   }
 }
 
-class _NavItem extends StatelessWidget {
+class _NavItem extends StatefulWidget {
   const _NavItem({
     required this.icon,
     required this.label,
@@ -331,39 +392,55 @@ class _NavItem extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_NavItem> createState() => _NavItemState();
+}
+
+class _NavItemState extends State<_NavItem> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    final dark = FluentTheme.of(context).brightness == Brightness.dark;
+    final selected = widget.selected;
+    final colors = context.colors;
+    final Color background = selected
+        ? colors.selected
+        : (_hovered ? colors.hover : Colors.transparent);
+    final Color foreground =
+        selected ? colors.textPrimary : colors.textSecondary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          decoration: BoxDecoration(
-            color: selected
-                ? (dark ? const Color(0xFF1B3A3D) : AppTokens.accentLight)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(children: [
+              if (selected)
+                Container(
+                  width: 3,
+                  height: 16,
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                      color: colors.accent,
+                      borderRadius: BorderRadius.circular(2)),
+                ),
+              Icon(widget.icon, size: 16, color: foreground),
+              const SizedBox(width: 10),
+              Text(widget.label,
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight:
+                          selected ? FontWeight.w600 : FontWeight.normal,
+                      color: foreground)),
+            ]),
           ),
-          child: Row(children: [
-            if (selected)
-              Container(
-                width: 3,
-                height: 16,
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(
-                    color: AppTokens.accent, borderRadius: BorderRadius.circular(2)),
-              ),
-            Icon(icon,
-                size: 16,
-                color: selected ? AppTokens.accentDark : AppTokens.text2),
-            const SizedBox(width: 10),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                    color: selected ? AppTokens.accentDark : AppTokens.text2)),
-          ]),
         ),
       ),
     );
