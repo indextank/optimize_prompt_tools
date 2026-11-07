@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/models.dart';
+import '../history_query.dart';
 import 'app_storage.dart';
 
 class WebStorage implements AppStorage {
@@ -109,8 +110,13 @@ class WebStorage implements AppStorage {
   Future<int> recordCount() async => _readList(_recKey).length;
 
   @override
-  Future<List<OptimizeRecord>> searchRecords(
-      {String keyword = '', String scene = '', String provider = ''}) async {
+  Future<List<OptimizeRecord>> searchRecords({
+    String keyword = '',
+    String scene = '',
+    String provider = '',
+    String presetId = '',
+    bool onlyFavorites = false,
+  }) async {
     final all = await loadRecords(limit: 100000);
     // 「模型」筛选：记录 providers 字段存的是服务 id，而筛选传的是 provider 类型，
     // 需反查服务表把类型映射为 id 集合再匹配（否则永远筛不出结果——历史页筛选 bug 根因）
@@ -120,21 +126,24 @@ class WebStorage implements AppStorage {
             for (final s in await loadServices())
               if (s.provider == provider) s.id
           };
-    return all.where((r) {
-      if (scene.isNotEmpty && r.scene != scene) return false;
-      if (provider.isNotEmpty &&
-          !r.providers.any((id) => id == provider || providerIds.contains(id))) {
-        return false;
-      }
-      if (keyword.isNotEmpty) {
-        final k = keyword.toLowerCase();
-        final inRaw = r.rawText.toLowerCase().contains(k);
-        final inResult = r.latest.result.toPlainText().toLowerCase().contains(k) ||
-            r.latest.result.rawText.toLowerCase().contains(k);
-        if (!inRaw && !inResult) return false;
-      }
-      return true;
-    }).toList();
+    final query = HistoryQuery(
+      keyword: keyword,
+      scene: scene,
+      provider: provider,
+      presetId: presetId,
+      onlyFavorites: onlyFavorites,
+    ).normalized();
+    return all
+        .where((r) => query.matches(r, providerIds: providerIds))
+        .toList();
+  }
+
+  @override
+  Future<void> setRecordFavorite(String id, bool favorite) async {
+    final all = await loadRecords(limit: 1000000);
+    final record = all.where((r) => r.id == id).firstOrNull;
+    if (record == null) return;
+    await saveRecord(record.copyWith(favorite: favorite));
   }
 
   @override

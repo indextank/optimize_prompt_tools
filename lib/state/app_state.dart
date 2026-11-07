@@ -516,6 +516,7 @@ class AppState extends ChangeNotifier {
           OptimizeVersion(v: 1, result: res.result, createdAt: _nowSec()),
         ],
         providers: [svc.id],
+        presetId: snapshot.preset?.id,
         scoreBefore: res.result.scoreBefore,
         scoreAfter: res.result.scoreAfter,
         elapsedMs: res.elapsedMs,
@@ -609,6 +610,7 @@ class AppState extends ChangeNotifier {
                     v: 1, result: result.result, createdAt: _nowSec()),
               ],
               providers: svcs.map((s) => s.id).toList(),
+              presetId: snapshot.preset?.id,
               scoreBefore: result.result.scoreBefore,
               scoreAfter: result.result.scoreAfter,
               elapsedMs: sw.elapsedMilliseconds,
@@ -705,6 +707,7 @@ class AppState extends ChangeNotifier {
           OptimizeVersion(v: 1, result: res.result, createdAt: _nowSec()),
         ],
         providers: [svc.id],
+        presetId: snapshot.preset?.id,
         scoreBefore: res.result.scoreBefore,
         scoreAfter: res.result.scoreAfter,
         elapsedMs: res.elapsedMs,
@@ -813,9 +816,35 @@ class AppState extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------------ 历史
-  Future<List<OptimizeRecord>> loadHistory(
-          {String keyword = '', String scene = '', String provider = ''}) =>
-      storage.searchRecords(keyword: keyword, scene: scene, provider: provider);
+  Future<List<OptimizeRecord>> loadHistory({
+    String keyword = '',
+    String scene = '',
+    String provider = '',
+    String presetId = '',
+    bool onlyFavorites = false,
+  }) =>
+      storage.searchRecords(
+        keyword: keyword,
+        scene: scene,
+        provider: provider,
+        presetId: presetId,
+        onlyFavorites: onlyFavorites,
+      );
+
+  /// 切换收藏状态并立即持久化到本地存储。
+  Future<void> setRecordFavorite(String id, bool favorite) async {
+    await storage.setRecordFavorite(id, favorite);
+    for (final runtime in tabs.tabs) {
+      final record = runtime.state.currentRecord;
+      if (record != null && record.id == id) {
+        runtime.state.currentRecord = record.copyWith(favorite: favorite);
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<void> toggleFavorite(OptimizeRecord record) =>
+      setRecordFavorite(record.id, !record.favorite);
 
   Future<void> openRecord(OptimizeRecord record) async {
     final runtime = tabs.addTab();

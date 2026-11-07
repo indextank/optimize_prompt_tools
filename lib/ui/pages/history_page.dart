@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/constants.dart';
 import '../../core/models.dart';
+import '../../services/history_query.dart';
 import '../../state/app_state.dart';
 import '../../app.dart';
 import '../theme.dart';
@@ -21,8 +22,12 @@ class _HistoryPageState extends State<HistoryPage> {
   final _searchCtrl = TextEditingController();
   String _sceneFilter = '';
   String _providerFilter = '';
+  String _presetFilter = '';
+  bool _onlyFavorites = false;
   List<OptimizeRecord> _records = [];
   bool _loading = true;
+  String? _error;
+  Set<String> _usedProviders = <String>{};
 
   @override
   void initState() {
@@ -68,17 +73,39 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Future<void> _reload() async {
-    setState(() => _loading = true);
-    final list = await appState.loadHistory(
-      keyword: _searchCtrl.text.trim(),
-      scene: _sceneFilter,
-      provider: _providerFilter,
-    );
-    if (!mounted) return;
     setState(() {
-      _records = list;
-      _loading = false;
+      _loading = true;
+      _error = null;
     });
+    try {
+      // 模型选项按全量历史计算（不受当前筛选影响）；若当前选中的模型
+      // 已无使用记录，立即清空选择，避免幽灵筛选条件。
+      final allRecords = await appState.loadHistory();
+      if (!mounted) return;
+      final used = usedProviderTypes(allRecords, appState.services);
+      if (_providerFilter.isNotEmpty && !used.contains(_providerFilter)) {
+        _providerFilter = '';
+      }
+      final list = await appState.loadHistory(
+        keyword: _searchCtrl.text.trim(),
+        scene: _sceneFilter,
+        provider: _providerFilter,
+        presetId: _presetFilter,
+        onlyFavorites: _onlyFavorites,
+      );
+      if (!mounted) return;
+      setState(() {
+        _records = list;
+        _usedProviders = used;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '加载失败：$e';
+      });
+    }
   }
 
   @override
@@ -116,20 +143,50 @@ class _HistoryPageState extends State<HistoryPage> {
                     ComboBoxItem(value: s.id, child: Text(s.name)),
                 ],
                 onChanged: (v) {
-                  _sceneFilter = v ?? '';
+                  setState(() {
+                    _sceneFilter = v ?? '';
+                    // 隐藏预置词下拉时必须同时清空选中值，避免幽灵筛选条件。
+                    if (!presetFilterVisible(_sceneFilter)) {
+                      _presetFilter = '';
+                    }
+                  });
                   _reload();
                 },
               ),
+              if (presetFilterVisible(_sceneFilter))
+                ComboBox<String>(
+                  key: const Key('history-preset-filter'),
+                  value: _presetFilter,
+                  items: [
+                    const ComboBoxItem(value: '', child: Text('全部预置词')),
+                    for (final p in appState.presets)
+                      ComboBoxItem(value: p.id, child: Text(p.name)),
+                  ],
+                  onChanged: (v) {
+                    setState(() => _presetFilter = v ?? '');
+                    _reload();
+                  },
+                ),
               ComboBox<String>(
                 value: _providerFilter,
                 items: [
                   const ComboBoxItem(value: '', child: Text('全部模型')),
-                  for (final p in kProviderList)
+                  // 只展示当前历史中实际使用过的模型，而不是全部九家服务商。
+                  for (final p in kProviderList
+                      .where((p) => _usedProviders.contains(p)))
                     ComboBoxItem(
                         value: p, child: Text(getProviderConfig(p)?.name ?? p)),
                 ],
                 onChanged: (v) {
                   _providerFilter = v ?? '';
+                  _reload();
+                },
+              ),
+              Checkbox(
+                checked: _onlyFavorites,
+                content: const Text('只看收藏'),
+                onChanged: (v) {
+                  setState(() => _onlyFavorites = v ?? false);
                   _reload();
                 },
               ),
@@ -147,11 +204,21 @@ class _HistoryPageState extends State<HistoryPage> {
         Expanded(
           child: _loading
               ? const Center(child: ProgressRing())
-              : _records.isEmpty
+              : _error != null
                   ? Center(
-                      child: Text('暂无历史记录',
-                          style: TextStyle(color: context.colors.textTertiary)))
-                  : ListView.builder(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Text(_error!,
+                            style: TextStyle(color: context.colors.danger)),
+                        const SizedBox(height: 12),
+                        Button(onPressed: _reload, child: const Text('重试')),
+                      ]),
+                    )
+                  : _records.isEmpty
+                      ? Center(
+                          child: Text('暂无历史记录',
+                              style:
+                                  TextStyle(color: context.colors.textTertiary)))
+                      : ListView.builder(
                       itemCount: _records.length,
                       itemBuilder: (context, i) => _RecordTile(
                         record: _records[i],
@@ -160,6 +227,10 @@ class _HistoryPageState extends State<HistoryPage> {
                           if (context.mounted) {
                             navigateTo(context, AppShellState.reviewEdit);
                           }
+                        },
+                        onFavorite: () async {
+                          await appState.toggleFavorite(_records[i]);
+                          await _reload();
                         },
                         onDelete: () async {
                           await appState.deleteRecord(_records[i].id);
@@ -174,18 +245,30 @@ class _HistoryPageState extends State<HistoryPage> {
 }
 
 class _RecordTile extends StatelessWidget {
-  const _RecordTile(
-      {required this.record, required this.onOpen, required this.onDelete});
+  const _RecordTile({
+    required this.record,
+    required this.onOpen,
+    required this.onDelete,
+    required this.onFavorite,
+  });
 
   final OptimizeRecord record;
   final VoidCallback onOpen;
   final VoidCallback onDelete;
+  final VoidCallback onFavorite;
 
   @override
   Widget build(BuildContext context) {
     final sceneName = appState.sceneById(record.scene).name;
     final time = DateFormat('MM-dd HH:mm')
         .format(DateTime.fromMillisecondsSinceEpoch(record.createdAt * 1000));
+    final presetName = record.presetId == null
+        ? null
+        : (appState.presets
+                .where((p) => p.id == record.presetId)
+                .firstOrNull
+                ?.name ??
+            '已删除预置词');
     final providerNames = record.providers
         .map((id) {
           final svc = appState.services.where((s) => s.id == id).firstOrNull;
@@ -198,16 +281,32 @@ class _RecordTile extends StatelessWidget {
       child: Row(children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // 直接作为 Column 子级获得有界宽度约束，省略号方可生效；
-            // 曾包在 Row 中导致无界约束、文本按自然宽渲染溢出 4000+px（历史页红圈问题）
-            Text(record.rawText,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w600)),
+            Row(children: [
+              Tooltip(
+                message: record.favorite ? '取消收藏' : '收藏',
+                child: IconButton(
+                  icon: Icon(
+                    record.favorite ? FluentIcons.heart_fill : FluentIcons.heart,
+                    size: 15,
+                    color: record.favorite
+                        ? context.colors.danger
+                        : context.colors.textSecondary,
+                  ),
+                  onPressed: onFavorite,
+                ),
+              ),
+              Expanded(
+                // Expanded 提供有界宽度，长原文单行省略（修复旧 Row 无界溢出问题）。
+                child: Text(record.rawText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
+            ]),
             const SizedBox(height: 3),
             Text(
-                '$time · $sceneName · ${record.mode.label} · $providerNames · 评分 ${record.scoreBefore ?? "-"}→${record.scoreAfter ?? "-"} · v${record.latest.v}',
+                '$time${presetName != null ? ' · 预置词：$presetName' : ''} · $sceneName · ${record.mode.label} · $providerNames · 评分 ${record.scoreBefore ?? "-"}→${record.scoreAfter ?? "-"} · v${record.latest.v}',
                 style:  TextStyle(fontSize: 11.5, color: context.colors.textTertiary),
                 overflow: TextOverflow.ellipsis),
           ]),

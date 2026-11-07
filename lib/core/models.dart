@@ -151,6 +151,14 @@ class DiagnosisItem {
 
   bool get isFixed => status == 'fixed';
 
+  DiagnosisItem copyWith({String? status, String? before, String? action}) =>
+      DiagnosisItem(
+        item: item,
+        status: status ?? this.status,
+        before: before ?? this.before,
+        action: action ?? this.action,
+      );
+
   Map<String, dynamic> toJson() =>
       {'item': item, 'status': status, 'before': before, 'action': action};
 
@@ -257,6 +265,20 @@ class OptimizeResult {
         isStructured: isStructured ?? this.isStructured,
       );
 
+  OptimizeResult copyWithDiagnosis(List<DiagnosisItem> items) => OptimizeResult(
+        role: role,
+        goal: goal,
+        requirements: requirements,
+        constraints: constraints,
+        outputFormat: outputFormat,
+        acceptance: acceptance,
+        scoreBefore: scoreBefore,
+        scoreAfter: scoreAfter,
+        diagnosis: items,
+        rawText: rawText,
+        isStructured: isStructured,
+      );
+
   OptimizeResult copyWithSections({
     String? role,
     String? goal,
@@ -353,6 +375,8 @@ class OptimizeRecord {
     this.elapsedMs = 0,
     this.tokens = 0,
     required this.createdAt,
+    this.favorite = false,
+    this.presetId,
   });
 
   final String id;
@@ -366,6 +390,12 @@ class OptimizeRecord {
   final int elapsedMs;
   final int tokens;
   final int createdAt;
+
+  /// 收藏状态（历史记录）。
+  final bool favorite;
+
+  /// 关联的编程预置词 id；未关联为 null。
+  final String? presetId;
 
   OptimizeVersion get latest => versions.isEmpty
       ? OptimizeVersion(v: 0, result: const OptimizeResult(rawText: '', isStructured: false))
@@ -383,6 +413,8 @@ class OptimizeRecord {
         'elapsed_ms': elapsedMs,
         'tokens': tokens,
         'created_at': createdAt,
+        'favorite': favorite,
+        'preset_id': presetId,
       };
 
   factory OptimizeRecord.fromJson(Map<String, dynamic> j) => OptimizeRecord(
@@ -401,9 +433,16 @@ class OptimizeRecord {
         elapsedMs: (j['elapsed_ms'] as num?)?.toInt() ?? 0,
         tokens: (j['tokens'] as num?)?.toInt() ?? 0,
         createdAt: (j['created_at'] as num?)?.toInt() ?? 0,
+        favorite: j['favorite'] as bool? ?? false,
+        presetId: j['preset_id'] as String?,
       );
 
-  OptimizeRecord copyWith({List<OptimizeVersion>? versions}) => OptimizeRecord(
+  OptimizeRecord copyWith({
+    List<OptimizeVersion>? versions,
+    bool? favorite,
+    String? presetId,
+  }) =>
+      OptimizeRecord(
         id: id,
         scene: scene,
         mode: mode,
@@ -415,6 +454,8 @@ class OptimizeRecord {
         elapsedMs: elapsedMs,
         tokens: tokens,
         createdAt: createdAt,
+        favorite: favorite ?? this.favorite,
+        presetId: presetId ?? this.presetId,
       );
 }
 

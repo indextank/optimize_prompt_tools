@@ -12,7 +12,7 @@
   <img alt="Flutter 3.47" src="https://img.shields.io/badge/Flutter-3.47-02569B?style=flat-square&logo=flutter&logoColor=white">
   <img alt="Dart 3.13" src="https://img.shields.io/badge/Dart-3.13-0175C2?style=flat-square&logo=dart&logoColor=white">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Android-1F6FEB?style=flat-square">
-  <img alt="Tests 515 passed" src="https://img.shields.io/badge/tests-515%20passed-4CAF50?style=flat-square">
+  <img alt="Tests 540 passed" src="https://img.shields.io/badge/tests-540%20passed-4CAF50?style=flat-square">
 </p>
 
 ## 目录
@@ -56,6 +56,7 @@
 - 🕘 **历史版本链** —— 每次优化与编辑留存版本，支持回滚、Markdown 导出、按模型/关键词筛选
 - 📋 **场景模板** —— AI 编程 / Bug 修复 / 文案写作 / 翻译润色 / 绘画提示词 / 数据分析 / PRD 文档，按场景定制优化侧重点
 - 🖥️ **真跨平台** —— Windows / Linux / Android 同一代码库；窄屏自动切换底部导航，主流分辨率下无溢出布局（全量布局巡检测试保障）
+- ⭐ **历史收藏与预置词筛选** —— 收藏/只看收藏、预置词关联标识与场景联动筛选，加载失败可重试
 - ⌨️ **可配置快捷键** —— 全局唤起（默认 `Ctrl+Shift+Space`）与快速优化（`Ctrl+Enter`）可在系统设置中录制修改；关闭/新建标签保留固定 `Ctrl+W` / `Ctrl+T`；桌面端系统级生效
 
 ## 支持的 AI 服务商
@@ -94,7 +95,7 @@ flutter run -d linux
 flutter run -d <device-id>
 
 # 质量门禁
-flutter test             # 515 项全量测试（单元 + Widget）
+flutter test             # 540 项全量测试（单元 + Widget）
 flutter analyze          # 静态分析，零告警
 
 # 生产产物构建（标准 Flutter 命令）

@@ -23,8 +23,17 @@ abstract class AppStorage {
   Future<void> deleteRecord(String id);
   Future<int> recordCount();
 
-  /// 全文搜索（匹配原文与最新版本结果文本）+ 场景/模型过滤
-  Future<List<OptimizeRecord>> searchRecords({String keyword = '', String scene = '', String provider = ''});
+  /// 全文搜索（匹配原文与最新版本结果文本）+ 场景/模型/预置词/收藏过滤
+  Future<List<OptimizeRecord>> searchRecords({
+    String keyword = '',
+    String scene = '',
+    String provider = '',
+    String presetId = '',
+    bool onlyFavorites = false,
+  });
+
+  /// 更新收藏状态（仅修改收藏字段，不影响版本链）
+  Future<void> setRecordFavorite(String id, bool favorite);
 
   /// 清理超期历史；[retentionDays] 为 0 表示永久保留（不清理）；返回删除条数
   Future<int> purgeExpiredRecords(int retentionDays, {int? nowEpochSec});

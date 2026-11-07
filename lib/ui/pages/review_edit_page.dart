@@ -4,6 +4,7 @@ library;
 import 'dart:async';
 
 import 'package:fluent_ui/fluent_ui.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/errors.dart';
 import '../../core/models.dart';
@@ -48,6 +49,10 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
   Timer? _autosave;
   int _loadedVersion = -1;
 
+  /// 只有用户实际编辑过内容才允许自动保存产生新版本；
+  /// 初次加载/版本切换/来源切换时的程序化同步不触发落库。
+  bool _userEdited = false;
+
   ExportService? _exporter;
   ExportService get exporter =>
       _exporter ??= ReviewEditPage.debugExporter ??
@@ -67,6 +72,7 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
   }
 
   void _syncFromResult(OptimizeResult r) {
+    _userEdited = false;
     _syncing = true;
     try {
       _syncFromResultInner(r);
@@ -162,6 +168,7 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
 
   void _onAnyEdit() {
     if (_syncing) return;
+    _userEdited = true;
     _autosave?.cancel();
     _autosave = Timer(const Duration(milliseconds: 800), _saveDraft);
   }
@@ -190,13 +197,19 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
   Future<void> _saveDraft() async {
     final record = appState.session.currentRecord;
     if (record == null) return;
+    // 仅手动变更才生成新版本：初次打开/来源切换/版本回滚不触发。
+    if (!_userEdited) return;
     final next = _collectResult();
     // 内容无变化时不生成新版本（防止程序化同步误触发）
-    if (next.toPlainText() == record.latest.result.toPlainText()) return;
+    if (next.toPlainText() == record.latest.result.toPlainText()) {
+      _userEdited = false;
+      return;
+    }
     _undoStack.add(record.latest.result);
     _redoStack.clear();
     await appState.saveEditedResult(next);
     _srcServiceId = null; // 编辑落库后该内容即记录主结果
+    _userEdited = false;
     if (mounted) setState(() {});
   }
 
@@ -252,11 +265,70 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
 
   bool _isListSection(String key) => _listItems.containsKey(key);
 
+  /// 切换单条诊断的已修复/待确认状态；手动操作才产生新版本。
+  Future<void> _toggleDiagnosis(int index) async {
+    final record = appState.session.currentRecord;
+    if (record == null) return;
+    final items = [..._displayResult(record).diagnosis];
+    if (index < 0 || index >= items.length) return;
+    final item = items[index];
+    items[index] = item.copyWith(
+        status: item.isFixed ? 'need_confirm' : 'fixed');
+    await appState.saveEditedResult(_collectResult().copyWithDiagnosis(items));
+    if (mounted) setState(() {});
+  }
+
+  /// 一键将全部诊断标记为已修复。
+  Future<void> _markAllFixed() async {
+    final record = appState.session.currentRecord;
+    if (record == null) return;
+    final items = [
+      for (final d in _displayResult(record).diagnosis)
+        d.copyWith(status: 'fixed')
+    ];
+    if (items.isEmpty) return;
+    await appState.saveEditedResult(_collectResult().copyWithDiagnosis(items));
+    if (mounted) setState(() {});
+  }
+
   /// 返回工作台：若结果发生过变更（含未触达防抖的待存草稿），先自动保存再离开
   Future<void> _backToWorkbench() async {
     _autosave?.cancel();
     await _saveDraft(); // 内部已实现「无变化不生成新版本」
     if (mounted) navigateTo(context, AppShellState.workbench);
+  }
+
+  /// 返回历史记录列表：保留未落盘草稿，不新增任何 tab。
+  Future<void> _backToHistory() async {
+    _autosave?.cancel();
+    await _saveDraft();
+    if (mounted) navigateTo(context, AppShellState.history);
+  }
+
+  /// 一键复制当前优化结果（含尚未落盘的编辑内容）；失败提供重试入口。
+  Future<void> _copyResult() async {
+    final text = _collectResult().toPlainText();
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted) _toast('已复制优化结果', InfoBarSeverity.success);
+    } catch (e) {
+      if (!mounted) return;
+      displayInfoBar(context, builder: (context, close) {
+        return InfoBar(
+          title: const Text('复制失败'),
+          content: Text('$e'),
+          severity: InfoBarSeverity.error,
+          action: Button(
+            onPressed: () {
+              close();
+              _copyResult();
+            },
+            child: const Text('重试'),
+          ),
+          onClose: close,
+        );
+      });
+    }
   }
 
   Future<void> _exportMd() async {
@@ -595,8 +667,21 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
     return Card(
       padding: EdgeInsets.zero,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _head('复查清单', trailing: Text('AI 诊断',
-            style: TextStyle(fontSize: 11.5, color: context.colors.textTertiary))),
+        _head('复查清单',
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('AI 诊断',
+                  style: TextStyle(
+                      fontSize: 11.5, color: context.colors.textTertiary)),
+              if (result.diagnosis.any((d) => !d.isFixed))
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Button(
+                    onPressed: _markAllFixed,
+                    child: const Text('全部已修复',
+                        style: TextStyle(fontSize: 11.5)),
+                  ),
+                ),
+            ])),
         if (result.scoreBefore != null || result.scoreAfter != null)
           Container(
             margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
@@ -635,45 +720,39 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
                 child: Text('无诊断数据（快速模式或结果未结构化）',
                     style: TextStyle(fontSize: 12, color: context.colors.textTertiary)),
               ),
-            for (final d in result.diagnosis)
+            for (var i = 0; i < result.diagnosis.length; i++)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 5),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Container(
-                    width: 18,
-                    height: 18,
-                    margin: const EdgeInsets.only(top: 1),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: d.isFixed
-                          ? context.colors.success
-                          : context.colors.surface,
-                      border: d.isFixed
-                          ? null
-                          : Border.all(color: context.colors.warning, width: 1.5),
+                  Tooltip(
+                    message: result.diagnosis[i].isFixed ? '标记为待确认' : '标记为已修复',
+                    child: IconButton(
+                      icon: Icon(
+                        result.diagnosis[i].isFixed
+                            ? FluentIcons.check_mark
+                            : FluentIcons.warning,
+                        size: 14,
+                        color: result.diagnosis[i].isFixed
+                            ? context.colors.success
+                            : context.colors.warning,
+                      ),
+                      onPressed: () => _toggleDiagnosis(i),
                     ),
-                    alignment: Alignment.center,
-                    child: Text(d.isFixed ? '✓' : '!',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: d.isFixed
-                                ? context.colors.textOnAccent
-                                : context.colors.warning)),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(d.item,
+                      Text(result.diagnosis[i].item,
                           style: const TextStyle(
                               fontSize: 12.5, fontWeight: FontWeight.w600)),
-                      if (d.before.isNotEmpty)
-                        Text(d.before,
+                      if (result.diagnosis[i].before.isNotEmpty)
+                        Text(result.diagnosis[i].before,
                             style: TextStyle(
                                 fontSize: 11,
                                 color: context.colors.textTertiary,
                                 decoration: TextDecoration.lineThrough)),
-                      if (d.action.isNotEmpty)
-                        Text(d.action,
+                      if (result.diagnosis[i].action.isNotEmpty)
+                        Text(result.diagnosis[i].action,
                             style:  TextStyle(fontSize: 11, color: context.colors.textTertiary)),
                     ]),
                   ),
@@ -714,10 +793,11 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
               style: TextStyle(fontSize: 11.5, color: context.colors.textTertiary)),
           Wrap(spacing: AppTokens.gapS, runSpacing: AppTokens.gapS, children: [
             Button(
-              onPressed: _backToWorkbench,
-              child: const Text('返回工作台'),
+              onPressed: _backToHistory,
+              child: const Text('返回历史记录'),
             ),
             Button(onPressed: _exportMd, child: const Text('导出 Markdown')),
+            Button(onPressed: _copyResult, child: const Text('一键复制')),
           ]),
         ],
       ),

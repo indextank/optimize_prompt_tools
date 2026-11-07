@@ -156,7 +156,8 @@ void main() {
     await tester.pump();
     expect(find.text('✓ 保存并一键复制'), findsNothing);
     expect(find.text('导出 Markdown'), findsOneWidget);
-    expect(find.text('返回工作台'), findsWidgets);
+    expect(find.text('‹ 返回工作台'), findsWidgets);
+    expect(find.text('返回历史记录'), findsOneWidget);
   });
 
   testWidgets('导出 Markdown 仅含优化结果正文（无标题/元信息/原始输入）', (tester) async {
@@ -187,7 +188,7 @@ void main() {
     await tester.enterText(find.byType(TextBox).at(0), '返回前刚改的角色文本');
     await tester.pump(); // 仅一帧，远未到 800ms 防抖
     expect(appState.session.currentRecord!.versions.length, 1);
-    await tester.tap(find.text('返回工作台').last);
+    await tester.tap(find.text('‹ 返回工作台').last);
     await tester.pumpAndSettle();
     expect(appState.session.currentRecord!.versions.length, 2,
         reason: '返回工作台应自动保存未落盘变更为新版本');

@@ -101,14 +101,14 @@ void main() {
     await seed();
     await pumpPage(tester);
     // 选「Kimi CN」——记录 providers 存服务 id 'svc-kimi'，需反查匹配
-    await tester.tap(find.byType(ComboBox<String>).at(1)); // 场景框之后是模型框
+    await tester.tap(find.byType(ComboBox<String>).at(2)); // 场景 → 预置词 → 模型
     await tester.pumpAndSettle();
     await tester.tap(find.text('Kimi CN').last);
     await tester.pumpAndSettle();
     expect(find.text('写一首关于秋天的诗'), findsOneWidget, reason: 'Kimi 记录应被筛出');
     expect(find.text('帮我写个爬虫'), findsNothing, reason: 'DeepSeek 记录应被过滤');
     // 切回全部模型：两条都回来
-    await tester.tap(find.byType(ComboBox<String>).at(1));
+    await tester.tap(find.byType(ComboBox<String>).at(2));
     await tester.pumpAndSettle();
     await tester.tap(find.text('全部模型').last);
     await tester.pumpAndSettle();
@@ -132,7 +132,7 @@ void main() {
     final btn = find.text('🗑 清空所有');
     expect(btn, findsOneWidget);
     final btnRect = tester.getRect(btn);
-    final comboRect = tester.getRect(find.byType(ComboBox<String>).at(1));
+    final comboRect = tester.getRect(find.byType(ComboBox<String>).at(2));
     expect(btnRect.left, greaterThan(comboRect.right), reason: '清空所有应在筛选控件右侧');
     expect(1440 - btnRect.right, lessThanOrEqualTo(40), reason: '应贴近页面右缘');
 
